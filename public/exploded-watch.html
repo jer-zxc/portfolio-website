@@ -185,10 +185,14 @@
       line-height: 1.18;
     }
 
+    /* Font-size/line-height matched to .case-study-elements-skills above
+       rather than its own clamp() scale, so this reads as the same "small
+       print" weight as the skills list instead of standing out as larger
+       body text. */
     .case-study-elements-concept {
       position: absolute;
       z-index: 5;
-      top: 77.8%;
+      top: 79.8%;
       left: 7.8%;
       width: 31%;
       max-width: 430px;
@@ -201,19 +205,21 @@
 
     .case-study-elements-detail {
       z-index: 3;
-      top: 67.2%;
+      top: 69.2%;
       left: 35%;
       width: 58%;
       aspect-ratio: 16 / 9;
     }
 
-    /* Deliberately overlaps the concept copy's top-left corner rather than
-       sitting clear of it, the same way the heading above is left free to
-       spill onto the wireframe. z-index 3 keeps it under the concept
-       copy's z-index 5, so the text stays legible over the overlap. */
+    /* Deliberately overlaps the wireframe's base-mechanism linework above
+       it and spills onto .case-study-elements-detail's top-left corner,
+       the same way the heading above is left free to spill onto the
+       wireframe instead of everything keeping its own lane. Tied z-index
+       with detail (3) plus coming later in markup order is what wins it
+       that corner rather than sitting underneath. */
     .case-study-elements-gears {
       z-index: 3;
-      top: 58%;
+      top: 60%;
       left: 22%;
       width: 40%;
       aspect-ratio: 16 / 9;
