@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>final-portfolio-website</title>
+
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <div id="loading-screen">
+      <div class="loading-content">
+        <div class="loading-label">Loading scene<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span></div>
+        <div class="loading-bar-track">
+          <div class="loading-bar-fill" id="loading-bar-fill"></div>
+        </div>
+        <div class="loading-percent" id="loading-percent">0%</div>
+      </div>
+    </div>
+
+    <div id="experience">
+      <canvas id="experience-canvas" class="experience-canvas"></canvas>
+    </div>
+
+    <div id="interaction-counter" aria-hidden="true">
+      <span class="interaction-counter-value" id="interaction-counter-value">0/0</span>
+    </div>
+
+    <div id="switching-scenes">
+      <div class="switching-scenes-grid"></div>
+      <div class="switching-scenes-frame"></div>
+
+      <div class="switching-scenes-icons switching-scenes-icons--top">
+        <div class="switching-scenes-icon switching-scenes-icon--earth"></div>
+        <div class="switching-scenes-icon switching-scenes-icon--eye"></div>
+        <div class="switching-scenes-icon switching-scenes-icon--clock"></div>
+        <div class="switching-scenes-icon switching-scenes-icon--eye-clock"></div>
+      </div>
+
+      <div class="switching-scenes-label">switching scenes<span class="switching-scenes-dots"><span>.</span><span>.</span><span>.</span></span></div>
+
+      <div class="switching-scenes-icons switching-scenes-icons--bottom">
+        <div class="switching-scenes-icon switching-scenes-icon--eye-clock"></div>
+        <div class="switching-scenes-icon switching-scenes-icon--clock"></div>
+        <div class="switching-scenes-icon switching-scenes-icon--eye"></div>
+        <div class="switching-scenes-icon switching-scenes-icon--earth"></div>
+      </div>
+    </div>
+
+    <div id="webpage-overlay">
+      <div class="about-backdrop">
+        <div class="about-breadcrumb">About me</div>
+        <div class="about-corner-mark"></div>
+      </div>
+      <div class="webpage-content">
+        <span id="about-signature" class="about-signature">zxc's</span>
+        <h1 id="webpage-heading" data-text="01  Project One">01  Project One</h1>
+        <p class="reveal">Placeholder content — replace with real project details.</p>
+        <p class="reveal">Click outside the panel to return to the scene.</p>
+      </div>
+    </div>
+
+    <button id="webpage-close" aria-label="Close">
+      <span class="menu-toggle-line"></span>
+      <span class="menu-toggle-line"></span>
+      <span class="menu-toggle-line"></span>
+    </button>
+
+    <div id="bottom-panel-overlay">
+      <div class="bottom-panel-content">
+        <h2 id="bottom-panel-heading" data-text="Elements">Elements</h2>
+      </div>
+    </div>
+
+    <div id="scene-label" aria-hidden="true">
+      <span class="scene-label-bar"></span>
+      <span class="scene-label-text">
+        <span id="scene-label-title" class="scene-label-title"></span>
+        <span id="scene-label-date" class="scene-label-date"></span>
+        <span id="scene-label-client" class="scene-label-client"></span>
+      </span>
+    </div>
+
+    <button id="scene-exit" class="open" aria-label="Leave scene">
+      <span class="menu-toggle-line"></span>
+      <span class="menu-toggle-line"></span>
+      <span class="menu-toggle-line"></span>
+    </button>
+
+    <button id="menu-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="site-menu">
+      <span class="menu-toggle-line"></span>
+      <span class="menu-toggle-line"></span>
+      <span class="menu-toggle-line"></span>
+    </button>
+
+    <nav id="site-menu" aria-hidden="true">
+      <a href="#" data-menu-link="about">About</a>
+      <a href="#" data-menu-link="projects">Projects</a>
+      <a href="#" data-menu-link="contact">Contact</a>
+    </nav>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

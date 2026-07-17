@@ -1,0 +1,1160 @@
+@use "./styles/reset.scss";
+@use "./styles/fonts.scss";
+@use "./styles/variables.scss" as vars;
+
+:root {
+  font-family: "Montserrat", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-weight: 300;
+
+  font-synthesis:none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  }
+
+
+  // Loading screen — shown while the GLB model, its textures, and the skybox
+  // are fetched, tracked via a THREE.LoadingManager in main.js. Faces the same
+  // typewriter/monospace language as the webpage overlay so it reads as part
+  // of the same site rather than a generic spinner.
+
+  #loading-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: vars.$color-loading-bg;
+    transition: opacity 0.6s ease, visibility 0.6s ease;
+
+    &.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .loading-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .loading-label {
+      font-family: "Courier New", ui-monospace, monospace;
+      font-size: 0.95rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(vars.$color-cream, 0.85);
+    }
+
+    .loading-dots span {
+      animation: loading-dot-blink 1.4s ease-in-out infinite;
+
+      &:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+
+      &:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+    }
+
+    .loading-bar-track {
+      width: 220px;
+      height: 3px;
+      border-radius: 2px;
+      background: rgba(vars.$color-cream, 0.15);
+      overflow: hidden;
+    }
+
+    .loading-bar-fill {
+      width: 0%;
+      height: 100%;
+      background: vars.$color-accent-blue;
+      transition: width 0.25s ease;
+    }
+
+    .loading-percent {
+      font-family: "Courier New", ui-monospace, monospace;
+      font-size: 0.8rem;
+      color: rgba(vars.$color-cream, 0.5);
+    }
+  }
+
+  @keyframes loading-dot-blink {
+    0%,
+    80%,
+    100% {
+      opacity: 0.2;
+    }
+
+    40% {
+      opacity: 1;
+    }
+  }
+
+  // experience
+
+  #experience {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    z-index: -1;
+
+    #experience-canvas{
+      width: 100%;
+      height: 100%;
+    }
+  }
+
+  // Top-left tally of every interactive prop clicked so far - mirrors
+  // #menu-toggle's corner offset on the opposite side. Text content is owned
+  // by main.js (see interactionCount); this just holds the static shell.
+
+  #interaction-counter {
+    position: fixed;
+    top: 2.9rem;
+    left: 2.75rem;
+    z-index: 20;
+    pointer-events: none;
+
+    .interaction-counter-value {
+      font-family: "Courier New", ui-monospace, monospace;
+      font-size: 1rem;
+      letter-spacing: 0.03em;
+      font-variant-numeric: tabular-nums;
+      color: vars.$color-cream;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    }
+  }
+
+  // The tally makes no sense while the Projects page (its own page - see
+  // openProjectsWebpage in main.js, which sets this body class) covers the
+  // scene - toggled via a body class rather than the usual #webpage-overlay.open
+  // sibling-selector trick since #interaction-counter isn't a sibling of it.
+  body.projects-open #interaction-counter {
+    display: none;
+  }
+
+  // Same idea, for the About page (see openAboutWebpage in main.js) - its own
+  // .about-breadcrumb sits in the same top-left corner, so the tally would
+  // otherwise sit right on top of it.
+  body.about-open #interaction-counter {
+    display: none;
+  }
+
+  // Full-screen transition graphic shown while the camera glides to a scene
+  // flagged with transitionOverlay: true (currently just "esc" -> campground)
+  // in main.js — covers the jump-cut-y reframe so it reads as a deliberate
+  // scene change rather than the camera just snapping/gliding across the room.
+
+  #switching-scenes {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    overflow: hidden;
+    background: vars.$color-overlay-bg;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.5s ease, visibility 0.5s ease;
+
+    // Single source of truth for icon diameter — referenced by both the row's
+    // bleed-off-the-viewport calc below and .switching-scenes-icon itself, so
+    // the two can't drift out of sync as the responsive size changes.
+    --switching-icon-size: clamp(130px, 20.5vw, 350px);
+
+    &.visible {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .switching-scenes-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(vars.$color-cream, 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(vars.$color-cream, 0.06) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    .switching-scenes-frame {
+      position: absolute;
+      inset: vars.$switching-frame-inset;
+      border: 1px solid rgba(vars.$color-cream, 0.85);
+    }
+
+    // Rows of circular icon slots aligned to the frame's own left/right inset
+    // (not the viewport edge) - horizontally they stay inside the frame, just
+    // grouped a bit tighter toward center than the frame's full width via the
+    // padding below. Vertically it's the opposite: top/bottom is set to a
+    // negative quarter of the icon's own size so exactly 1/4 of each icon
+    // bleeds off the top/bottom edge of the page, independent of icon size.
+    .switching-scenes-icons {
+      position: absolute;
+      left: vars.$switching-frame-inset;
+      right: vars.$switching-frame-inset;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 9%;
+
+      &--top {
+        top: calc(var(--switching-icon-size) / -4);
+      }
+
+      &--bottom {
+        bottom: calc(var(--switching-icon-size) / -4);
+      }
+    }
+
+    // Sized large and bold to match the reference graphic (switching_scenes.webp),
+    // where each icon spans roughly a fifth of the frame's width.
+    .switching-scenes-icon {
+      width: var(--switching-icon-size);
+      height: var(--switching-icon-size);
+      flex-shrink: 0;
+      border-radius: 50%;
+      background-color: rgba(vars.$color-cream, 0.06);
+      // The element_*.webp source art has a transparent margin around the
+      // circular graphic itself (~12% of the canvas) — scale past 100% so
+      // that circle reaches the div's edge instead of leaving a halo ring.
+      background-size: 114%;
+      background-position: center;
+      background-repeat: no-repeat;
+      opacity: 0.9;
+
+      &--earth {
+        background-image: url("/images/element_1.webp");
+      }
+
+      &--eye {
+        background-image: url("/images/element_2.webp");
+      }
+
+      &--clock {
+        background-image: url("/images/element_3.webp");
+      }
+
+      &--eye-clock {
+        background-image: url("/images/element_4.webp");
+      }
+    }
+
+    .switching-scenes-label {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      align-items: baseline;
+      gap: 0.15em;
+      font-family: "Montserrat", sans-serif;
+      font-weight: 600;
+      font-size: clamp(1rem, 1.6vw, 1.3rem);
+      color: vars.$color-cream;
+    }
+
+    .switching-scenes-dots span {
+      animation: loading-dot-blink 1.4s ease-in-out infinite;
+
+      &:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+
+      &:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+    }
+  }
+
+  // 2D webpage panel — a drawer that slides in from the right edge over the
+  // 3D scene, which stays fully visible (no dimming) behind it. Dismissed by
+  // clicking anywhere outside the panel.
+
+  #webpage-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    pointer-events: none;
+
+    &.open {
+      pointer-events: auto;
+    }
+
+    .webpage-content {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: min(480px, 100vw);
+      overflow-y: auto;
+      box-sizing: border-box;
+      padding: 4.5rem 2.5rem 3rem;
+      background:
+        radial-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px) 0 0 / 3px 3px,
+        vars.$color-overlay-bg;
+      color: vars.$color-cream;
+      box-shadow: -20px 0 70px rgba(0, 0, 0, 0.45);
+      transform: translateX(100%);
+      transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    &.open .webpage-content {
+      transform: translateX(0);
+    }
+
+    // Full-page variant — used for the Projects index's own root (#projects-root,
+    // built by openProjectsWebpage in main.js) instead of the narrow side
+    // drawer used for individual project pages. The panel background fills
+    // the entire viewport width (left/right both set, rather than just the
+    // base rule's `right: 0`), but the heading/copy/gallery each stay capped
+    // and centered within it, so the page reads as one wide canvas with a
+    // deliberate column of content down the middle rather than edge-to-edge
+    // text or images.
+    .webpage-content.full-page {
+      left: 0;
+      right: 0;
+      width: 100vw;
+      padding: 6rem 3rem 4rem;
+
+      #projects-heading,
+      p.reveal {
+        max-width: 640px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      .projects-gallery {
+        max-width: 900px;
+        margin: 2rem auto 0;
+      }
+    }
+
+    // Mosaic of project stills on the Projects index - grouped into rows in
+    // main.js (buildProjectsGallery), same reading order as the reference
+    // layout. Every tile's actual width/height is set inline by
+    // layoutProjectsGallery in main.js once each row's images are loaded,
+    // scaling them to a shared row height by their *real* aspect ratio
+    // (they're all different sizes) so nothing gets stretched or cropped -
+    // this stylesheet just supplies the row/gap scaffolding around that.
+    .projects-gallery {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      transition-delay: 0.22s;
+    }
+
+    .projects-gallery-row {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+
+      // Until layoutProjectsGallery sets explicit pixel sizes (briefly, on
+      // first paint before images report their natural dimensions), wrap
+      // rather than let a 3-image row overflow the panel.
+      flex-wrap: wrap;
+    }
+
+    .projects-gallery-tile {
+      border-radius: 4px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.02);
+      flex-shrink: 0;
+
+      img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+      }
+    }
+
+    #webpage-heading,
+    #projects-heading {
+      font-family: "TT Commons Pro", "Montserrat", sans-serif;
+      font-weight: 700;
+      font-size: clamp(1.6rem, 6vw, 2.1rem);
+      margin: 0 0 1rem;
+      white-space: pre-wrap;
+
+      &.typing::after {
+        content: '';
+        display: inline-block;
+        width: 0.5ch;
+        height: 1em;
+        margin-left: 2px;
+        background: currentColor;
+        vertical-align: -0.1em;
+        animation: caret-blink 0.8s steps(1) infinite;
+      }
+    }
+
+    // "PROJECTS" is typed out literally in caps (see openProjectsWebpage in
+    // main.js), but transform is set here too as a safety net, plus a touch
+    // of letter-spacing so all-caps reads as a page title, not just louder text.
+    #projects-heading {
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    p.reveal {
+      line-height: 1.6;
+      margin-bottom: 1rem;
+      opacity: 0;
+      transform: translateY(14px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+
+    .webpage-content.revealed p.reveal {
+      opacity: 1;
+      transform: translateY(0);
+
+      &:nth-of-type(2) {
+        transition-delay: 0.12s;
+      }
+
+      &:nth-of-type(3) {
+        transition-delay: 0.22s;
+      }
+    }
+
+    // About page — a centered card that pops out over the live 3D scene
+    // (rather than the right-edge drawer every other page uses), toggled via
+    // #webpage-overlay.about-mode + .webpage-content.about-page (see
+    // openAboutWebpage in main.js). .about-backdrop just softens the scene
+    // behind the card with a blur (no darkening tint - the scene stays at
+    // its own natural brightness) plus the corner chrome - the grid pattern
+    // itself lives on the card (see .webpage-content.about-page below), not
+    // spread across the whole backdrop.
+
+    .about-backdrop {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.6s ease;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+
+    &.about-mode.open .about-backdrop {
+      opacity: 1;
+    }
+
+    // Sits in the margin band between the viewport edge and the card's own
+    // outer edge (the card is inset by $about-outer-inset below) - not on
+    // the card itself, so it reads as a page-level label rather than part of
+    // the card's own content.
+    .about-breadcrumb {
+      position: absolute;
+      top: 1.6rem;
+      left: 1.9rem;
+      font-size: 0.85rem;
+      letter-spacing: 0.02em;
+      color: rgba(vars.$color-cream, 0.55);
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    }
+
+    .about-corner-mark {
+      position: absolute;
+      right: 2rem;
+      bottom: 2.1rem;
+      width: 2.4rem;
+      height: 1px;
+      background: rgba(vars.$color-cream, 0.5);
+    }
+
+    // How far the card sits from the viewport edge - the sides get a bigger
+    // inset than top/bottom so the card reads as a shorter, less
+    // edge-to-edge rectangle rather than matching the viewport's own wide
+    // aspect ratio. Its own inner border is a second, smaller inset so
+    // there's still a visible margin of card background between the card's
+    // true edge and the visible frame line. Content stays centered in a
+    // fixed-width column (see the shared width/max-width rule below) rather
+    // than stretching to fill the card's full width.
+    $about-outer-inset-x: clamp(90px, 14vw, 240px);
+    $about-outer-inset-y: clamp(48px, 6.5vw, 120px);
+
+    .webpage-content.about-page {
+      top: $about-outer-inset-y;
+      left: $about-outer-inset-x;
+      right: $about-outer-inset-x;
+      bottom: $about-outer-inset-y;
+      width: auto;
+      height: auto;
+      max-height: none;
+      padding: 3rem;
+      border: none;
+      border-radius: 14px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background:
+        linear-gradient(rgba(vars.$color-cream, 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(vars.$color-cream, 0.06) 1px, transparent 1px),
+        vars.$color-overlay-bg;
+      background-size: 16px 16px, 16px 16px, auto;
+      // Pops out from the center rather than sliding in - a bigger scale
+      // jump than a subtle fade. Same duration/easing on both transform and
+      // opacity (no overshoot) so the close transition - which just reverses
+      // this same rule - reads as an exact mirror of the open one, instead of
+      // the open pop finishing with a visible bounce the close never shows.
+      transform: scale(0.85);
+      transform-origin: center;
+      opacity: 0;
+      transition: transform 0.4s ease, opacity 0.4s ease;
+
+      &::before {
+        content: '';
+        position: absolute;
+        inset: 1.75rem;
+        border: 1px solid rgba(vars.$color-cream, 0.85);
+        border-radius: 8px;
+        pointer-events: none;
+      }
+
+      .about-signature,
+      #webpage-heading,
+      p.reveal {
+        width: 100%;
+        max-width: 640px;
+      }
+    }
+
+    &.open .webpage-content.about-page {
+      transform: scale(1);
+      opacity: 1;
+    }
+
+    .about-signature {
+      display: none;
+      font-family: "Edwardian Script ITC", cursive;
+      font-size: clamp(1.8rem, 3vw, 2.4rem);
+      color: vars.$color-cream;
+      margin-bottom: 0.25rem;
+      // The script face carries a lot of left-side bearing before the stroke
+      // itself starts - nudge left so the "z" reads flush with the heading
+      // below it instead of visibly indented.
+      margin-left: -0.35rem;
+    }
+
+    .webpage-content.about-page .about-signature {
+      display: block;
+    }
+
+    .webpage-content.about-page #webpage-heading {
+      font-size: clamp(2.2rem, 5vw, 3.4rem);
+      letter-spacing: 0.01em;
+      text-transform: uppercase;
+    }
+  }
+
+  // Bottom panel — same drawer language as #webpage-overlay above, but slides
+  // up from the bottom edge instead of in from the right, and opens
+  // automatically once settled on interact_2's final stage (see main.js),
+  // same as the side panel does for interact_1. Starts as a small peek at
+  // the bottom edge; its height from there is driven directly by scroll
+  // input (see setBottomPanelExpandProgress in main.js, which sets an inline
+  // height on .bottom-panel-content) rather than an animated jump to a fixed
+  // "full" state, so growing it to fill the screen tracks the gesture 1:1
+  // instead of firing off a single canned transition. Scrolling back past
+  // the peek height closes it outright - the reverse of the same drag.
+  // Clicking outside it (while still peeking) or pressing Escape close it too.
+
+  #bottom-panel-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    pointer-events: none;
+
+    &.open {
+      pointer-events: auto;
+    }
+
+    .bottom-panel-content {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      width: 100%;
+      height: min(360px, 70vh);
+      // Hidden until fully expanded (see the .expanded modifier below) - if
+      // this were auto the whole time, a wheel-down that's still growing the
+      // panel toward full height would *also* natively scroll this element's
+      // content at the same time (they share the same wheel gesture), so by
+      // the time the panel finished expanding its content was already
+      // scrolled partway down instead of starting at the top.
+      overflow-y: hidden;
+      box-sizing: border-box;
+      padding: 2.75rem 3rem;
+      background:
+        radial-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px) 0 0 / 3px 3px,
+        vars.$color-overlay-bg;
+      color: vars.$color-cream;
+      box-shadow: 0 -20px 70px rgba(0, 0, 0, 0.45);
+      transform: translateY(100%);
+      // Only the slide-in itself animates - height changes as the user
+      // scrolls (see main.js) and stays untransitioned so it tracks the
+      // gesture directly rather than lagging behind it.
+      transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+
+      .case-study {
+        margin-left: auto;
+        margin-right: auto;
+      }
+    }
+
+    &.open .bottom-panel-content {
+      transform: translateY(0);
+    }
+
+    // Set once the panel reaches full height (see setBottomPanelExpandProgress
+    // in main.js) - only then does further wheel-down scroll the case study
+    // content itself, instead of that scroll fighting with the expand gesture.
+    .bottom-panel-content.expanded {
+      overflow-y: auto;
+    }
+
+    // Pinned to the top-left corner of .case-study-elements (see below),
+    // which is inset from the left rather than starting flush at the edge -
+    // the reserved gap gives the heading room to sit in its own space, but
+    // since it's absolutely positioned (not a flex sibling boxed to that
+    // gap), a wide enough word spills over onto whatever sits beneath it,
+    // same as the reference design's own .elements h2. main.js's
+    // buildExplodedWatchCaseStudy moves this node into .case-study-elements
+    // so it shares that exact box instead of being independently centered.
+    // text-shadow is the same legibility treatment #scene-label-title uses
+    // for text over the live scene, since this can sit over a photo. Sized
+    // to match .webpage-content.about-page #webpage-heading (further up
+    // this file) - the site's own existing "big page title" scale - rather
+    // than the reference's own much larger, tighter-tracked display type.
+    #bottom-panel-heading {
+      position: absolute;
+      top: 7.4%;
+      left: clamp(14px, 4vw, 40px);
+      z-index: 5;
+      font-family: "TT Commons Pro", "Montserrat", sans-serif;
+      font-weight: 700;
+      font-size: clamp(2.2rem, 5vw, 3.4rem);
+      letter-spacing: 0.01em;
+      text-transform: uppercase;
+      margin: 0;
+      white-space: pre-wrap;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+
+      &.typing::after {
+        content: '';
+        display: inline-block;
+        width: 0.5ch;
+        height: 1em;
+        margin-left: 2px;
+        background: currentColor;
+        vertical-align: -0.1em;
+        animation: caret-blink 0.8s steps(1) infinite;
+      }
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(14px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+
+    .bottom-panel-content.revealed .reveal {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    // Case-study layout for the Exploded Watch project (built in main.js -
+    // see buildExplodedWatchCaseStudy), reproducing the standalone
+    // exploded-watch.html/.css reference page inside the panel's own
+    // scroll: a full-bleed cover photo with the project title/date, the
+    // "ELEMENTS" collage, then a full-bleed final render. Fonts/colors are
+    // swapped for this site's own (Montserrat/TT Commons Pro, $color-cream)
+    // in place of the reference's Arial-on-near-black, but every position
+    // below keeps the reference's own values so the composition itself
+    // reads exactly the same.
+    .case-study {
+      max-width: 1100px;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      transition-delay: 0.22s;
+    }
+
+    // Small scroll affordance under the cover, in normal flow rather than
+    // overlaid like the heading - there's no reference-design equivalent to
+    // match, it's just this site's existing "how do I move" hint.
+    .case-study-hint {
+      margin: 0;
+      font-size: 0.85rem;
+      line-height: 1.6;
+      color: rgba(vars.$color-cream, 0.55);
+    }
+
+    // Cover - just the project title/date, sitting directly on the panel's
+    // own background rather than the reference's full-bleed photo, which
+    // wasn't actually part of this 3D scene. Sizes match
+    // #scene-label-title/#scene-label-date exactly (further up this file) -
+    // the site's own established title+date pairing - instead of a bespoke
+    // clamp() scale for this one spot.
+    .case-study-cover {
+      padding-top: 0.25rem;
+    }
+
+    .case-study-cover-title {
+      margin: 0;
+      font-family: "Montserrat", sans-serif;
+      font-weight: 600;
+      font-size: 1.2rem;
+      line-height: 1.1;
+      color: vars.$color-cream;
+    }
+
+    .case-study-cover-date {
+      margin: 0.25rem 0 0;
+      font-size: 0.75rem;
+      letter-spacing: 0.03em;
+      color: rgba(vars.$color-cream, 0.65);
+    }
+
+    // Elements - the collaged desk/café/wireframe composition. Every child
+    // below is positioned as a % of this box's own width/height (via the
+    // aspect-ratio here), matching the reference's .elements section's own
+    // left/top/width values exactly - just scaled to the panel's own column
+    // instead of the full viewport its vw-based height clamp assumed. The
+    // ratio itself (127 in the reference) is trimmed down here to close up
+    // the dead space that height clamp left below the lowest photo
+    // (.case-study-elements-detail) once ported into this narrower column -
+    // 110 is as far down as that'll go without clipping the detail photo
+    // against this box's own overflow: hidden. No mobile breakpoint, unlike
+    // the reference's own max-width: 720px rule: everything here is already
+    // %/aspect-ratio driven, so it scales as one composition at any panel
+    // width instead of needing to flatten into a stacked column.
+    .case-study-elements {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 100 / 110;
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    // Shared by the desk/café/detail shots (not the wireframe, which has
+    // its own static crop below) - a light zoom on hover, same as the
+    // reference's .elements__image:hover img. background is only ever
+    // visible for an instant while a photo loads, so it's the same
+    // $color-overlay-bg the rest of this panel already uses rather than a
+    // separate, mismatched near-black of its own.
+    .case-study-media {
+      position: absolute;
+      overflow: hidden;
+      background: vars.$color-overlay-bg;
+
+      img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: transform 700ms cubic-bezier(.2, .7, .2, 1);
+      }
+
+      &:hover img {
+        transform: scale(1.025);
+      }
+    }
+
+    .case-study-elements-desk {
+      z-index: 2;
+      top: 3.6%;
+      left: 24.4%;
+      width: 69.2%;
+      aspect-ratio: 16 / 9;
+    }
+
+    .case-study-elements-cafe {
+      z-index: 4;
+      top: 20.3%;
+      left: 4.5%;
+      width: 39.7%;
+      aspect-ratio: 16 / 9;
+    }
+
+    .case-study-elements-wireframe {
+      position: absolute;
+      z-index: 1;
+      top: 27.2%;
+      left: 1.8%;
+      width: 96.8%;
+      // The reference's own wireframe photo was 1233x653; wireframe_watch_2
+      // (public/images) is actually 927x653 - a noticeably less wide crop.
+      // Matching the box's aspect-ratio to the real file (rather than the
+      // reference's) is what keeps object-fit: cover from having to zoom in
+      // far past what the reference itself shows just to fill a box shaped
+      // for a wider image than this one actually is.
+      aspect-ratio: 927 / 653;
+      overflow: hidden;
+      opacity: 0.93;
+
+      img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        // No object-position needed - the box above now matches this
+        // image's own aspect ratio exactly, so cover has nothing to crop
+        // before the scale below.
+        transform: scale(1.145);
+      }
+    }
+
+    .case-study-elements-skills {
+      position: absolute;
+      z-index: 6;
+      top: 43.5%;
+      left: 16.8%;
+      width: min(34%, 420px);
+      margin: 0;
+      padding-left: 1.15em;
+      // Same muted tone as .case-study-hint, instead of the near-opaque
+      // white the reference used.
+      color: rgba(vars.$color-cream, 0.55);
+      font-size: clamp(8px, 0.78vw, 13px);
+      line-height: 1.18;
+    }
+
+    // Font-size/line-height matched to .case-study-elements-skills above
+    // rather than its own clamp() scale, so the concept copy reads as the
+    // same "small print" weight as the skills list instead of standing out
+    // as larger body text.
+    .case-study-elements-concept {
+      position: absolute;
+      z-index: 5;
+      top: 77.8%;
+      left: 7.8%;
+      width: 31%;
+      max-width: 430px;
+      margin: 0;
+      color: rgba(vars.$color-cream, 0.96);
+      font-size: clamp(8px, 0.78vw, 13px);
+      line-height: 1.18;
+      letter-spacing: -0.025em;
+      text-align: justify;
+    }
+
+    // Now holds watch_scene4 (the finished watch case) - see
+    // buildExplodedWatchCaseStudy in main.js. watch_scene2, which used to
+    // sit in this slot, moved to .case-study-elements-gears below instead.
+    .case-study-elements-detail {
+      z-index: 3;
+      top: 67.2%;
+      left: 35%;
+      width: 58%;
+      aspect-ratio: 16 / 9;
+    }
+
+    // watch_scene2's new, smaller spot (see above) - deliberately overlaps
+    // the wireframe's own base-mechanism linework above it and spills onto
+    // .case-study-elements-detail's top-left corner, the same way
+    // #bottom-panel-heading is left free to spill onto the wireframe
+    // instead of everything politely keeping its own lane. Tied z-index
+    // with detail (3) plus coming later in the DOM/append order is what
+    // wins it that corner rather than sitting underneath.
+    .case-study-elements-gears {
+      z-index: 3;
+      top: 58%;
+      left: 22%;
+      width: 40%;
+      aspect-ratio: 16 / 9;
+    }
+
+    // Final render - full-bleed, breaking out to the panel's own edges
+    // (cancelling its 2.75rem/3rem padding exactly, rather than 100vw,
+    // which would overflow by a scrollbar's width on non-overlay
+    // scrollbars since .bottom-panel-content is itself the scrolling
+    // element) instead of stopping at .case-study's 1100px column like
+    // everything above it - same as the reference's .final-render. Margins
+    // trimmed down from the reference's own (46-120px bottom alone) to sit
+    // closer to .case-study-elements above it, on top of that box's own
+    // tightened aspect-ratio.
+    .case-study-final {
+      width: calc(100% + 6rem);
+      margin: clamp(8px, 1.5vw, 24px) -3rem clamp(16px, 2.5vw, 32px);
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      background: vars.$color-overlay-bg;
+
+      img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+    }
+  }
+
+  @keyframes caret-blink {
+    50% {
+      opacity: 0;
+    }
+  }
+
+  // Caption identifying the room/scene currently zoomed into (e.g. "Desktop
+  // Room" + date); shown/hidden and populated from main.js based on which
+  // scene's stages[] the camera is inside.
+
+  #scene-label {
+    position: fixed;
+    left: 21rem;
+    bottom: 14rem;
+    z-index: 5;
+    display: flex;
+    align-items: stretch;
+    gap: 0.85rem;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+
+    &.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .scene-label-bar {
+      width: 2px;
+      background: rgba(vars.$color-cream, 0.7);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    }
+
+    .scene-label-text {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0.25rem;
+    }
+
+    .scene-label-title {
+      font-family: "Montserrat", sans-serif;
+      font-weight: 600;
+      font-size: 1.2rem;
+      line-height: 1.1;
+      color: vars.$color-cream;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    }
+
+    .scene-label-date {
+      font-size: 0.75rem;
+      letter-spacing: 0.03em;
+      color: rgba(vars.$color-cream, 0.65);
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    }
+
+    // Optional third line (e.g. studio/client credit); only set for scenes
+    // that have one, so stay collapsed when left empty.
+    .scene-label-client {
+      font-size: 0.68rem;
+      letter-spacing: 0.03em;
+      color: rgba(vars.$color-cream, 0.4);
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+      margin-top: 0.15rem;
+
+      &:empty {
+        display: none;
+      }
+    }
+  }
+
+  // "Leave scene" button — shown only while a free-camera scene (see the
+  // freeCamera flag in main.js, currently just the campground behind the esc
+  // key) is zoomed in. Those scenes let the camera orbit freely instead of
+  // treating an outside click as "step back", so this is the explicit way
+  // out. Shares #menu-toggle's corner and three-line mark below, but is
+  // simply born in the open (X) shape and only toggles visibility - leaving
+  // a scene reads as the same close affordance as dismissing the menu
+  // rather than a separate one.
+
+  #menu-toggle,
+  #scene-exit,
+  #webpage-close {
+    position: fixed;
+    top: 2.75rem;
+    right: 2.75rem;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 0.6rem 0.5rem;
+    border: none;
+    background: none;
+    cursor: pointer;
+    transition: opacity 0.3s ease;
+
+    .menu-toggle-line {
+      width: 2.1rem;
+      height: 1.5px;
+      border-radius: 1px;
+      background: vars.$color-cream;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+    }
+
+    &.open {
+      .menu-toggle-line:nth-child(1) {
+        transform: translateY(11.5px) rotate(45deg);
+      }
+
+      .menu-toggle-line:nth-child(2) {
+        opacity: 0;
+      }
+
+      .menu-toggle-line:nth-child(3) {
+        transform: translateY(-11.5px) rotate(-45deg);
+      }
+    }
+  }
+
+  #scene-exit {
+    opacity: 0;
+    pointer-events: none;
+
+    &.visible {
+      opacity: 1;
+      pointer-events: auto;
+
+      &:hover {
+        opacity: 0.7;
+      }
+    }
+  }
+
+  #scene-exit.visible ~ #menu-toggle {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  #scene-exit.visible ~ #site-menu {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  // Close button for the 2D webpage overlay (see #webpage-overlay below) -
+  // born in the open (X) shape like #scene-exit, since #menu-toggle hides
+  // itself while the webpage panel is open (same sibling-selector trick,
+  // further down). Needed because the full-page Projects variant fills the
+  // entire viewport, leaving no "outside" area for the click-to-close
+  // listener in main.js to catch.
+  #webpage-close {
+    opacity: 0;
+    pointer-events: none;
+
+    .menu-toggle-line:nth-child(1) {
+      transform: translateY(11.5px) rotate(45deg);
+    }
+
+    .menu-toggle-line:nth-child(2) {
+      opacity: 0;
+    }
+
+    .menu-toggle-line:nth-child(3) {
+      transform: translateY(-11.5px) rotate(-45deg);
+    }
+  }
+
+  #webpage-overlay.open ~ #webpage-close {
+    opacity: 1;
+    pointer-events: auto;
+
+    &:hover {
+      opacity: 0.7;
+    }
+  }
+
+  // The About page (see openAboutWebpage in main.js) is a centered card with
+  // plenty of backdrop showing around it, not an edge-to-edge drawer - clicking
+  // outside the card already closes it (same click-outside handler every other
+  // page uses), so there's no need to swap the hamburger for an explicit close
+  // (X) button the way the full-page Projects view does. Both overrides need
+  // an extra class in the selector to outrank the two rules above.
+  #webpage-overlay.about-mode.open ~ #menu-toggle {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  #webpage-overlay.about-mode.open ~ #webpage-close {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  // Top-right hamburger menu — sits above the 3D scene at all times and
+  // hides itself whenever the 2D webpage overlay is open (its own close
+  // button occupies the same corner), via the ~ sibling selector below
+  // rather than any extra JS state. No background chrome on either the
+  // toggle or the dropdown — just the three lines and, once opened, the
+  // link text floating over the scene.
+
+  #menu-toggle:hover {
+    opacity: 0.7;
+  }
+
+  #webpage-overlay.open ~ #menu-toggle {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  #site-menu {
+    position: fixed;
+    top: 5.6rem;
+    right: 2.85rem;
+    z-index: 19;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1.75rem;
+    pointer-events: none;
+
+    a[data-menu-link] {
+      font-family: "Courier New", ui-monospace, monospace;
+      font-size: 1rem;
+      letter-spacing: 0.03em;
+      color: vars.$color-cream;
+      text-decoration: none;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+      opacity: 0;
+      transform: translateY(-8px);
+      transition: opacity 0.35s ease, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s ease;
+
+      &:hover {
+        color: vars.$color-hover-blue;
+      }
+
+      @for $i from 1 through 3 {
+        &:nth-child(#{$i}) {
+          transition-delay: #{($i - 1) * 0.06}s;
+        }
+      }
+    }
+
+    &.open {
+      pointer-events: auto;
+
+      a[data-menu-link] {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  }
+
+  #webpage-overlay.open ~ #site-menu {
+    opacity: 0;
+    pointer-events: none;
+  }
+

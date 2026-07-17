@@ -1,0 +1,11 @@
+// Shared color palette — pulled out of style.scss so the same values don't
+// drift out of sync across the loading screen, overlay, and menu.
+$color-cream: #f7f3ea;
+$color-loading-bg: #15130f;
+$color-overlay-bg: #242323;
+$color-accent-blue: #324657;
+$color-hover-blue: #8fb3d1;
+
+// Shared inset for the switching-scenes frame and its straddling icon rows —
+// kept as one value so the icon rows always align to the frame edge.
+$switching-frame-inset: clamp(20px, 2.4vw, 42px);
