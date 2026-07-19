@@ -1091,11 +1091,18 @@ window.addEventListener('pointermove', (event) => {
 // mid-tween) position means rapid re-clicks - e.g. a double-click - redirect
 // smoothly instead of the previous frame-by-frame lerp letting one
 // in-flight target silently get swapped for another.
-function animateCameraTo(position, lookAt, { duration = 1.4, ease = 'sine.inOut', onComplete } = {}) {
+function animateCameraTo(position, lookAt, { duration = 1.15, ease = 'sine.inOut', onComplete } = {}) {
     cameraTween?.kill();
 
     isAnimatingCamera = true;
     controls.enabled = false;
+    const restoreDamping = controls.enableDamping;
+    // OrbitControls keeps an internal spherical/damping state. If that state
+    // is left behind while GSAP moves position/target directly, its next
+    // update performs a visible final "correction", especially after the user
+    // entered About from an angled overview. Keep it synchronized throughout
+    // the tween without allowing residual damping to steer the camera.
+    controls.enableDamping = false;
     // Any fresh tween supersedes the "exiting" grab-to-interrupt state; the
     // exit block below re-flags itself right after starting its own tween.
     isExitingToOverview = false;
@@ -1113,8 +1120,13 @@ function animateCameraTo(position, lookAt, { duration = 1.4, ease = 'sine.inOut'
         onUpdate: () => {
             camera.position.set(from.px, from.py, from.pz);
             controls.target.set(from.tx, from.ty, from.tz);
+            controls.update();
         },
         onComplete: () => {
+            camera.position.copy(position);
+            controls.target.copy(lookAt);
+            controls.update();
+            controls.enableDamping = restoreDamping;
             isAnimatingCamera = false;
             // Run the caller's onComplete first so it can flip isContactZoomedIn
             // (e.g. the exit-to-overview tween below) before we decide whether
@@ -1127,6 +1139,9 @@ function animateCameraTo(position, lookAt, { duration = 1.4, ease = 'sine.inOut'
             // soon as they've arrived rather than waiting for an exit.
             controls.enabled = !isContactZoomedIn || zoomedFreeCamera;
         },
+        onInterrupt: () => {
+            controls.enableDamping = restoreDamping;
+        },
     });
 }
 
@@ -1135,9 +1150,9 @@ function animateCameraTo(position, lookAt, { duration = 1.4, ease = 'sine.inOut'
 // grabs the camera mid-exit (see interruptExitToOverview).
 const switchingScenesFadeMs = 500;
 const switchingScenesHoldMs = 550;
-const sceneExitDuration = 1.4;
-const stageBackDuration = 1.4;
-const galleryTableExitDuration = 1.4;
+const sceneExitDuration = 1.15;
+const stageBackDuration = 1.15;
+const galleryTableExitDuration = 1.15;
 const webpageExitDurationMs = 1000;
 let switchingScenesStartTimeout = null;
 let switchingScenesHideTimeout = null;
@@ -2382,12 +2397,18 @@ function openAboutWebpage() {
 
     webpageContent.querySelectorAll('#projects-root').forEach((el) => el.remove());
     webpageContent.querySelectorAll('p.reveal').forEach((p) => p.remove());
+    webpageContent.querySelectorAll('.about-credit').forEach((el) => el.remove());
     webpageHeading.style.removeProperty('display');
 
     const paragraph = document.createElement('p');
     paragraph.className = 'reveal';
     paragraph.textContent = "i'm jerry, a self taught 3d designer building at the intersection of design, engineering and sustainability. i enjoy taking my combination of technical and creative skills to explore 3d environments in blender!";
     webpageContent.appendChild(paragraph);
+
+    const credit = document.createElement('p');
+    credit.className = 'about-credit';
+    credit.textContent = "Inspired by Andrew Woan's website portfolio";
+    webpageContent.appendChild(credit);
 
     const headingText = 'about me';
     webpageHeading.dataset.text = headingText;
@@ -2506,7 +2527,7 @@ function closeWebpage({ restoreGallery = true } = {}) {
             x: preWebpageCameraPosition.x,
             y: preWebpageCameraPosition.y,
             z: preWebpageCameraPosition.z,
-            duration: 1.4,
+            duration: 1.15,
             ease: 'sine.inOut',
         });
     }
