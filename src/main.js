@@ -69,6 +69,7 @@ const discoveredGroupKeys = new Set();
 let typewriterTimer = null;
 let webpageRevealTimer = null;
 let webpageDiveTween = null;
+let aboutOpenTimer = null;
 // Delays stripping the 'about-page'/'full-page' variant classes on close
 // until their own close transition has actually finished playing - see
 // closeWebpage. Removing them immediately would snap the panel back to the
@@ -610,7 +611,7 @@ const scenes = {
         // "ABOUT" and "ME" are two separate keycaps that share the same shot,
         // so either one dives into the same About page once the camera lands
         // (see onArrive below, and the openAboutWebpage() it points to).
-        onArrive: openAboutWebpage,
+        onArrive: scheduleAboutWebpage,
         stages: [
             {
                 position: new THREE.Vector3(-1.527, 2.819, 0.647),
@@ -620,7 +621,7 @@ const scenes = {
     },
     me: {
         liftMesh: false,
-        onArrive: openAboutWebpage,
+        onArrive: scheduleAboutWebpage,
         stages: [
             {
                 position: new THREE.Vector3(-1.527, 2.819, 0.647),
@@ -1090,7 +1091,7 @@ window.addEventListener('pointermove', (event) => {
 // mid-tween) position means rapid re-clicks - e.g. a double-click - redirect
 // smoothly instead of the previous frame-by-frame lerp letting one
 // in-flight target silently get swapped for another.
-function animateCameraTo(position, lookAt, { duration = 1.2, ease = 'expo.out', onComplete } = {}) {
+function animateCameraTo(position, lookAt, { duration = 1, ease = 'power3.out', onComplete } = {}) {
     cameraTween?.kill();
 
     isAnimatingCamera = true;
@@ -1134,6 +1135,10 @@ function animateCameraTo(position, lookAt, { duration = 1.2, ease = 'expo.out', 
 // grabs the camera mid-exit (see interruptExitToOverview).
 const switchingScenesFadeMs = 500;
 const switchingScenesHoldMs = 550;
+const sceneExitDuration = 1;
+const stageBackDuration = 1;
+const galleryTableExitDuration = 1;
+const webpageExitDurationMs = 1000;
 let switchingScenesStartTimeout = null;
 let switchingScenesHideTimeout = null;
 
@@ -1366,10 +1371,12 @@ function enterGalleryTable() {
 // that further step, chained after this by the "X" shortcut below on a
 // second press).
 function exitGalleryTable() {
-    if (!isGalleryTableZoomedIn) return;
+    if (!isGalleryTableZoomedIn || isAnimatingCamera) return;
     isGalleryTableZoomedIn = false;
     hideGalleryProjectsDisplay();
     animateCameraTo(preTableCameraPosition, preTableCameraTarget, {
+        duration: galleryTableExitDuration,
+        ease: 'power3.out',
         onComplete: showGalleryTableHint,
     });
 }
@@ -1399,6 +1406,11 @@ function finishExitingToOverview() {
 // outside click there is just orbiting), so the button is their only way
 // back in besides Escape.
 function exitZoomedScene(onComplete) {
+    if (!isContactZoomedIn || isAnimatingCamera) return;
+    if (zoomedGroupKey === 'about' || zoomedGroupKey === 'me') {
+        clearTimeout(aboutOpenTimer);
+        aboutOpenTimer = null;
+    }
     sceneExitButton.classList.remove('visible');
     if (isGalleryEntered) {
         hideGalleryTableHint();
@@ -1414,8 +1426,8 @@ function exitZoomedScene(onComplete) {
                     x: mesh.userData.initialPosition.x,
                     y: mesh.userData.initialPosition.y,
                     z: mesh.userData.initialPosition.z,
-                    duration: 0.2,
-                    ease: 'back.out(2)',
+                    duration: 1,
+                    ease: 'power2.out',
                     overwrite: true,
                 });
             });
@@ -1441,9 +1453,17 @@ function exitZoomedScene(onComplete) {
     // current in-transit (not yet arrived) position, corrupting the
     // "original" spot that later exits would return to.
     if (exitingTransitionOverlay) {
-        animateCameraBehindOverlay(preZoomCameraPosition, preZoomCameraTarget, { duration: 2.2, onComplete: finish });
+        animateCameraBehindOverlay(preZoomCameraPosition, preZoomCameraTarget, {
+            duration: sceneExitDuration,
+            ease: 'power3.out',
+            onComplete: finish,
+        });
     } else {
-        animateCameraTo(preZoomCameraPosition, preZoomCameraTarget, { duration: 2.2, onComplete: finish });
+        animateCameraTo(preZoomCameraPosition, preZoomCameraTarget, {
+            duration: sceneExitDuration,
+            ease: 'power3.out',
+            onComplete: finish,
+        });
     }
     // Set after the call: animateCameraTo clears this flag itself at its
     // top (any fresh tween supersedes a prior exit-in-progress), so it
@@ -1451,32 +1471,12 @@ function exitZoomedScene(onComplete) {
     isExitingToOverview = true;
 }
 
-// Grabbing (or scrolling to zoom) the camera while it's gliding back to the
-// overview hands control back immediately instead of eating the input for
-// the rest of the tween - killing the tween leaves the camera wherever it
-// was interrupted, which reads as "I took control" rather than a forced
-// wait. Scoped to only the exit glide: staged shots (entering/advancing)
-// are meant to play out. Also cancels/hides a still-pending switching-scenes
-// overlay (see animateCameraBehindOverlay) - otherwise a grab during the
-// pre-move hold would kill a tween that never started, leaving the overlay
-// stuck on screen since its own onComplete would never fire.
-function interruptExitToOverview() {
-    if (!isExitingToOverview) return;
-    cameraTween?.kill();
-    isAnimatingCamera = false;
-    finishExitingToOverview();
-    hideSwitchingScenes();
-    controls.enabled = true;
-}
-canvas.addEventListener('pointerdown', interruptExitToOverview);
-canvas.addEventListener('wheel', interruptExitToOverview, { passive: true });
-
 // Drives both mouse clicks and keyboard shortcuts (1/2/3) through the same
 // zoom/lift/advance logic, keyed on the group that was interacted with
 // rather than the hovered mesh itself, so a keypress can act exactly like
 // clicking its corresponding interact_<n> mesh.
 function handleInteraction(targetGroupKey) {
-    if (isWebpageOpen || isMenuOpen) return;
+    if (isWebpageOpen || isMenuOpen || isAnimatingCamera || isExitingToOverview) return;
 
     // interact_table only exists (and is only raycastable) once inside the
     // gallery diorama - handled here rather than falling into the desk
@@ -1532,7 +1532,10 @@ function handleInteraction(targetGroupKey) {
         if (zoomStageIndex > 0 && !isGalleryEntered && (targetGroupKey === null || (stillOnSameObject && !nextStage))) {
             const previousStage = scenes[zoomedGroupKey].stages[zoomStageIndex - 1];
             zoomStageIndex -= 1;
-            animateCameraTo(previousStage.position, previousStage.lookAt);
+            animateCameraTo(previousStage.position, previousStage.lookAt, {
+                duration: stageBackDuration,
+                ease: 'power3.out',
+            });
             return;
         }
 
@@ -1560,8 +1563,8 @@ function handleInteraction(targetGroupKey) {
                         x: mesh.userData.liftedPosition.x,
                         y: mesh.userData.liftedPosition.y,
                         z: mesh.userData.liftedPosition.z,
-                        duration: 0.4,
-                        ease: 'back.out(2)',
+                        duration: 1,
+                        ease: 'power2.out',
                         overwrite: true,
                     });
                 });
@@ -1686,6 +1689,18 @@ window.addEventListener('click', (event) => {
 
     handleInteraction(groupKey);
 });
+
+// Some meshes use the interact_ prefix so they can share the keyboard hover
+// animation, but intentionally have no click action (for example Control and
+// Alt). Only show the hand cursor for groups the click handler can activate.
+function isClickableInteraction(groupKey) {
+    if (!groupKey) return false;
+    if (groupKey === 'volume') return true;
+    if (groupKey === 'table') {
+        return isGalleryEntered && !isGalleryTableZoomedIn;
+    }
+    return Boolean(scenes[groupKey]);
+}
 
 // Project data shared by the gallery carousel and the full-page project
 // detail interface. The five entries with a
@@ -2327,6 +2342,20 @@ galleryProjectsDisplay.addEventListener('click', (event) => {
 // no closed (opacity: 0) state to actually animate from, so it interpolated
 // straight from the drawer's own translateX(100%) instead - a hybrid
 // slide-then-fade. Forcing a reflow between the two fixes that.
+function scheduleAboutWebpage() {
+    clearTimeout(aboutOpenTimer);
+    aboutOpenTimer = setTimeout(() => {
+        aboutOpenTimer = null;
+        if (
+            isContactZoomedIn
+            && !isExitingToOverview
+            && (zoomedGroupKey === 'about' || zoomedGroupKey === 'me')
+        ) {
+            openAboutWebpage();
+        }
+    }, 500);
+}
+
 function openAboutWebpage() {
     isWebpageOpen = true;
     controls.enabled = false;
@@ -2441,6 +2470,7 @@ function openGalleryFromMenu() {
 // otherwise flash the carousel back in for a moment first.
 function closeWebpage({ restoreGallery = true } = {}) {
     const closingProjectDetail = webpageContent.classList.contains('full-page');
+    const closingAboutPage = webpageContent.classList.contains('about-page');
     const restoreGalleryAfterProjectSlide =
         closingProjectDetail && isGalleryEntered && restoreGallery;
     if (closingProjectDetail && getRouteFromLocation()?.type === 'project') {
@@ -2465,17 +2495,18 @@ function closeWebpage({ restoreGallery = true } = {}) {
     clearTimeout(webpageRevealTimer);
     webpageDiveTween?.kill();
 
-    // Project details never move the camera on open, so do not run the old
-    // drawer's camera-return tween on close either. The panel and its
-    // thumbnail strip now leave together on one translateY animation.
-    if (closingProjectDetail) {
+    // Project details and About never move the camera when their overlays
+    // open. About also starts exitZoomedScene when its card is dismissed, so
+    // running this legacy drawer-return tween at the same time would make two
+    // GSAP tweens fight over camera.position and leave it at a skewed angle.
+    if (closingProjectDetail || closingAboutPage) {
         webpageDiveTween = null;
     } else {
         webpageDiveTween = gsap.to(camera.position, {
             x: preWebpageCameraPosition.x,
             y: preWebpageCameraPosition.y,
             z: preWebpageCameraPosition.z,
-            duration: 0.8,
+            duration: 1.1,
             ease: 'power2.inOut',
         });
     }
@@ -2521,7 +2552,7 @@ function closeWebpage({ restoreGallery = true } = {}) {
             // panel has completely cleared the viewport.
             if (restoreGalleryAfterProjectSlide) showGalleryProjectsDisplay();
         }
-    }, closingProjectDetail ? 650 : 600);
+    }, webpageExitDurationMs + 50);
 }
 
 sceneExitButton.addEventListener('click', (event) => {
@@ -2797,12 +2828,14 @@ const render = () => {
         const isHoveringStickerSurface = !hoveredMesh
             && !isContactZoomedIn
             && raycastStickerTargetHit() !== null;
-        canvas.style.cursor = hoveredMesh ? 'pointer' : (isHoveringStickerSurface ? 'crosshair' : 'default');
+        const hoveredGroupKey = hoveredMesh?.userData.groupKey ?? null;
+        canvas.style.cursor = isClickableInteraction(hoveredGroupKey)
+            ? 'pointer'
+            : (isHoveringStickerSurface ? 'crosshair' : 'default');
 
         // Fires once per hover (on the group changing), not every frame the
         // pointer sits still over the same prop, and only for the whitelisted
         // groupKeys in hoverSoundGroupKeys.
-        const hoveredGroupKey = hoveredMesh?.userData.groupKey ?? null;
         if (isSoundEnabled
             && hoveredGroupKey
             && hoveredGroupKey !== lastHoveredGroupKey
