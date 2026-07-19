@@ -2567,6 +2567,17 @@ menuToggle.addEventListener('click', (event) => {
     isMenuOpen ? closeMenu() : openMenu();
 });
 
+// Tab previously moved focus onto the hidden menu controls and exposed the
+// right-side drawer even though the user had not clicked the menu button.
+// This portfolio uses the rendered keyboard as part of the scene, so keep the
+// physical Tab key from activating that browser-focus path.
+window.addEventListener('keydown', (event) => {
+    if (event.key !== 'Tab') return;
+    event.preventDefault();
+    if (isMenuOpen) closeMenu();
+    menuToggle.blur();
+}, { capture: true });
+
 siteMenuLinks.forEach((link) => {
     link.addEventListener('click', (event) => {
         event.preventDefault();
