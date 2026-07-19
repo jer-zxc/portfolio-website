@@ -93,14 +93,6 @@ let bottomPanelExpandProgress = 0;
 // wheel listener further down, in step with how far the user has scrolled.
 let bottomPanelExpandTarget = 0;
 
-// Captured once from the static markup so openWebpage() can fall back to the
-// original placeholder heading/copy whenever it's opened without explicit
-// content (e.g. the 3D zoom-into-key path).
-const defaultWebpageHeading = document.querySelector("#webpage-heading").dataset.text
-    || document.querySelector("#webpage-heading").textContent;
-const defaultWebpageParagraphs = Array.from(document.querySelectorAll('#webpage-overlay p.reveal'))
-    .map((p) => p.textContent);
-
 // interact_2's former case-study panel identifiers are retained for its
 // project data builder, but the panel is no longer opened from the 3D scene.
 const bottomPanelGroupKey = '2';
@@ -2020,58 +2012,6 @@ function showProjectDetail(project) {
     };
 
     renderDetail();
-}
-
-function openWebpage({ heading, paragraphs } = {}) {
-    isWebpageOpen = true;
-    // A reopen within closeWebpage's cleanup delay would otherwise still
-    // fire and rip 'about-mode'/'full-page' back off this freshly-opened
-    // page - see closeWebpage.
-    clearTimeout(webpageCloseCleanupTimer);
-    discardProjectDetailInterface();
-    webpageContent.classList.remove('full-page');
-    document.body.classList.remove('projects-open');
-    webpageContent.style.removeProperty('opacity');
-    webpageOverlay.classList.add('open');
-    webpageOverlay.classList.remove('about-mode');
-    webpageContent.classList.remove('revealed', 'full-page', 'about-page');
-    webpageContent.scrollTop = 0;
-    controls.enabled = false;
-
-    // A small extra push toward the key, as if the camera dives through it
-    // just as the panel slides in alongside it.
-    preWebpageCameraPosition.copy(camera.position);
-    const diveTarget = camera.position.clone().lerp(controls.target, 0.14);
-    webpageDiveTween?.kill();
-    webpageDiveTween = gsap.to(camera.position, {
-        x: diveTarget.x,
-        y: diveTarget.y,
-        z: diveTarget.z,
-        duration: 1.1,
-        ease: 'power2.out',
-    });
-
-    // Undo whatever the project detail page left
-    // behind - it has its own root and doesn't touch #webpage-heading or
-    // this paragraph-rebuilding path at all, so this is just cleanup for
-    // whenever the panel is reopened via the default 3D zoom-into-key path
-    // right after Projects was showing.
-    webpageContent.querySelectorAll('#projects-root').forEach((el) => el.remove());
-    webpageHeading.style.removeProperty('display');
-
-    webpageContent.querySelectorAll('p.reveal').forEach((p) => p.remove());
-    (paragraphs || defaultWebpageParagraphs).forEach((text) => {
-        const p = document.createElement('p');
-        p.className = 'reveal';
-        p.textContent = text;
-        webpageContent.appendChild(p);
-    });
-
-    const headingText = heading || defaultWebpageHeading;
-    webpageHeading.dataset.text = headingText;
-    playTypewriter(webpageHeading, headingText);
-    clearTimeout(webpageRevealTimer);
-    webpageRevealTimer = setTimeout(() => webpageContent.classList.add('revealed'), 450);
 }
 
 // Opens the selected project directly in the current full-page detail
