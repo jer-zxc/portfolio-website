@@ -1060,9 +1060,9 @@ const overviewMinDistance = 1;
 const controls = new OrbitControls( camera, renderer.domElement );
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
-controls.rotateSpeed = 0.4;
-controls.zoomSpeed = 0.7;
-controls.panSpeed = 0.8;
+controls.rotateSpeed = 0.25;
+controls.zoomSpeed = 0.45;
+controls.panSpeed = 0.5;
 controls.maxPolarAngle = Math.PI / 2 - 0.05;
 controls.minDistance = overviewMinDistance;
 controls.maxDistance = 15;
@@ -1091,7 +1091,7 @@ window.addEventListener('pointermove', (event) => {
 // mid-tween) position means rapid re-clicks - e.g. a double-click - redirect
 // smoothly instead of the previous frame-by-frame lerp letting one
 // in-flight target silently get swapped for another.
-function animateCameraTo(position, lookAt, { duration = 1, ease = 'power3.out', onComplete } = {}) {
+function animateCameraTo(position, lookAt, { duration = 1.4, ease = 'sine.inOut', onComplete } = {}) {
     cameraTween?.kill();
 
     isAnimatingCamera = true;
@@ -1135,9 +1135,9 @@ function animateCameraTo(position, lookAt, { duration = 1, ease = 'power3.out', 
 // grabs the camera mid-exit (see interruptExitToOverview).
 const switchingScenesFadeMs = 500;
 const switchingScenesHoldMs = 550;
-const sceneExitDuration = 1;
-const stageBackDuration = 1;
-const galleryTableExitDuration = 1;
+const sceneExitDuration = 1.4;
+const stageBackDuration = 1.4;
+const galleryTableExitDuration = 1.4;
 const webpageExitDurationMs = 1000;
 let switchingScenesStartTimeout = null;
 let switchingScenesHideTimeout = null;
@@ -1376,7 +1376,7 @@ function exitGalleryTable() {
     hideGalleryProjectsDisplay();
     animateCameraTo(preTableCameraPosition, preTableCameraTarget, {
         duration: galleryTableExitDuration,
-        ease: 'power3.out',
+        ease: 'sine.inOut',
         onComplete: showGalleryTableHint,
     });
 }
@@ -1455,13 +1455,13 @@ function exitZoomedScene(onComplete) {
     if (exitingTransitionOverlay) {
         animateCameraBehindOverlay(preZoomCameraPosition, preZoomCameraTarget, {
             duration: sceneExitDuration,
-            ease: 'power3.out',
+            ease: 'sine.inOut',
             onComplete: finish,
         });
     } else {
         animateCameraTo(preZoomCameraPosition, preZoomCameraTarget, {
             duration: sceneExitDuration,
-            ease: 'power3.out',
+            ease: 'sine.inOut',
             onComplete: finish,
         });
     }
@@ -1534,7 +1534,7 @@ function handleInteraction(targetGroupKey) {
             zoomStageIndex -= 1;
             animateCameraTo(previousStage.position, previousStage.lookAt, {
                 duration: stageBackDuration,
-                ease: 'power3.out',
+                ease: 'sine.inOut',
             });
             return;
         }
@@ -2506,8 +2506,8 @@ function closeWebpage({ restoreGallery = true } = {}) {
             x: preWebpageCameraPosition.x,
             y: preWebpageCameraPosition.y,
             z: preWebpageCameraPosition.z,
-            duration: 1.1,
-            ease: 'power2.inOut',
+            duration: 1.4,
+            ease: 'sine.inOut',
         });
     }
 
