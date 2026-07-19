@@ -4,11 +4,29 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DecalGeometry } from 'three/addons/geometries/DecalGeometry.js';
+
+// The imported stylesheet is ready before module evaluation reaches this
+// line, so it is now safe to reveal the loading interface without a flash of
+// raw HTML.
+document.documentElement.classList.add('app-ready');
+// Keep the critical loading-only guard through two complete paint
+// opportunities. This prevents any raw interface nodes from sharing the
+// first frame with the styled loading screen.
+requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+        document.documentElement.classList.remove('startup-loading');
+    });
+});
 
 const canvas = document.querySelector("#experience-canvas");
 const loadingScreen = document.querySelector("#loading-screen");
 const loadingBarFill = document.querySelector("#loading-bar-fill");
 const loadingPercent = document.querySelector("#loading-percent");
+const enterGate = document.querySelector("#enter-gate");
+const enterGateEnterButton = document.querySelector("#enter-gate-enter");
+const enterGatePortfolioButton = document.querySelector("#enter-gate-portfolio");
+const enterGateMuteButton = document.querySelector("#enter-gate-mute");
 const webpageOverlay = document.querySelector("#webpage-overlay");
 const webpageContent = document.querySelector(".webpage-content");
 const bottomPanelOverlay = document.querySelector("#bottom-panel-overlay");
@@ -20,15 +38,32 @@ const webpageHeading = document.querySelector("#webpage-heading");
 const sceneLabel = document.querySelector("#scene-label");
 const sceneLabelTitle = document.querySelector("#scene-label-title");
 const sceneLabelDate = document.querySelector("#scene-label-date");
-const sceneLabelClient = document.querySelector("#scene-label-client");
 const interactionCounterValue = document.querySelector("#interaction-counter-value");
 const switchingScenesOverlay = document.querySelector("#switching-scenes");
+const galleryTableHint = document.querySelector("#gallery-table-hint");
+const galleryProjectsDisplay = document.querySelector("#gallery-projects-display");
+const galleryProjectsHeader = document.querySelector(".gallery-projects-header");
+const galleryProjectsFooter = document.querySelector(".gallery-projects-footer");
+const galleryProjectsTitle = document.querySelector("#gallery-projects-title");
+const galleryProjectsMeta = document.querySelector("#gallery-projects-meta");
+const galleryProjectsTrack = document.querySelector("#gallery-projects-track");
+const galleryProjectsPrevButton = document.querySelector("#gallery-projects-prev");
+const galleryProjectsNextButton = document.querySelector("#gallery-projects-next");
+const galleryProjectsCategoryValue = document.querySelector("#gallery-projects-category");
+const galleryProjectsRoleValue = document.querySelector("#gallery-projects-role");
+const galleryProjectsIndexValue = document.querySelector("#gallery-projects-index");
+const galleryProjectsOpenButton = document.querySelector("#gallery-projects-open");
 const menuToggle = document.querySelector("#menu-toggle");
 const siteMenu = document.querySelector("#site-menu");
 const siteMenuLinks = document.querySelectorAll("[data-menu-link]");
 let isWebpageOpen = false;
 let isBottomPanelOpen = false;
 let isMenuOpen = false;
+// True from page load until the gate is dismissed (see hideEnterGate) -
+// checked alongside isWebpageOpen/isBottomPanelOpen/isMenuOpen wherever the
+// 3D scene needs to ignore clicks/hover happening underneath it.
+let isEnterGateOpen = true;
+let assetsReady = false;
 // Distinct groupKeys clicked at least once - the numerator for the top-left
 // counter. A Set (not a running tally) so re-clicking the same prop doesn't
 // push the count past its total, which is displayed as "found/total". Only
@@ -66,17 +101,16 @@ const defaultWebpageHeading = document.querySelector("#webpage-heading").dataset
 const defaultWebpageParagraphs = Array.from(document.querySelectorAll('#webpage-overlay p.reveal'))
     .map((p) => p.textContent);
 
-// The groupKey/stage that, once reached (camera settled on its final zoom
-// stage), automatically opens the 2D webpage side panel.
-const webpageGroupKey = '1';
-const webpageStageIndex = 1;
-
-// Same idea as webpageGroupKey/webpageStageIndex above, but for interact_2's
-// bottom panel - it doesn't open automatically on arrival, though: see the
-// wheel listener further down, which opens it once the user scrolls down
-// while settled on this stage.
+// interact_2's former case-study panel identifiers are retained for its
+// project data builder, but the panel is no longer opened from the 3D scene.
 const bottomPanelGroupKey = '2';
-const bottomPanelStageIndex = 1;
+
+// Same idea again, but for interact_3: once its only stage is reached (the
+// shared overview shot it has in common with '1'/'2'), clicking interact_3 a
+// second time doesn't step back out - it swaps the whole scene into the
+// gallery's own standalone diorama instead (see enterGallery further down).
+const galleryGroupKey = '3';
+const galleryStageIndex = 0;
 
 // Types the heading out character by character, like it's being typed on a
 // typewriter, matching the "paper rising out of the keyboard" transition.
@@ -113,12 +147,48 @@ loadingManager.onProgress = (url, itemsLoaded, itemsTotal) => {
 };
 
 loadingManager.onLoad = () => {
+    assetsReady = true;
     loadingScreen.classList.add('hidden');
-    // Let the loading screen's own fade (see #loading-screen.hidden in
-    // style.scss) clear before the wave plays, so it reads as the scene
-    // waking up rather than something rippling behind the overlay.
-    setTimeout(playIntroWave, 700);
+    if (location.hash.startsWith('#project-') || location.hash.startsWith('#scene-')) {
+        ensureIntroPropsVisible();
+        isEnterGateOpen = false;
+        enterGate.classList.remove('visible');
+        requestAnimationFrame(routeFromHash);
+        return;
+    }
+    // Straight in, no fade - 'no-transition' suppresses #enter-gate's own
+    // opacity transition (style.scss) for this one appearance only. Forcing
+    // a layout read between adding and removing it is what makes the browser
+    // actually commit the transition-less state first, rather than
+    // coalescing both class changes into one frame and still transitioning.
+    enterGate.classList.add('no-transition', 'visible');
+    void enterGate.offsetWidth;
+    enterGate.classList.remove('no-transition');
 };
+
+// Dismisses the gate and reveals the scene behind it (the keyboard desk) by
+// playing the intro wave - delayed to match #enter-gate's own opacity
+// transition (style.scss) so the wave only plays once the gate has actually
+// faded out.
+function hideEnterGate() {
+    isEnterGateOpen = false;
+    enterGate.classList.remove('visible');
+    setTimeout(playIntroWave, 600);
+}
+
+// Enter and Portfolio both just dismiss the gate into the same scene -
+// Portfolio doesn't jump to the Projects page.
+enterGateEnterButton.addEventListener('click', hideEnterGate);
+enterGatePortfolioButton.addEventListener('click', hideEnterGate);
+
+// "enter without music" needs to win the race against the page-wide
+// pointerdown listener (see unlockBackgroundMusicOnFirstGesture further
+// down) that unlocks currentMusicTrack on the very first gesture anywhere -
+// since that pointerdown bubbles up from this button too. Setting
+// isSoundEnabled here, on pointerdown rather than click, runs before that
+// bubbled listener fires.
+enterGateMuteButton.addEventListener('pointerdown', () => setSoundEnabled(false));
+enterGateMuteButton.addEventListener('click', hideEnterGate);
 
 const textureLoader = new THREE.TextureLoader(loadingManager);
 
@@ -129,6 +199,7 @@ const textureMap = {
     campground: "/textures/room/texture_set_campground.webp",
     cottage: "/textures/room/texture_set_cottage.webp",
     desktop_room: "/textures/room/texture_set_desktop_room.webp",
+    gallery: "/textures/room/texture_set_gallery.webp",
     key3_characters: "/textures/room/texture_set_key3_characters.webp",
     keyswitch_home_campground: "/textures/room/texture_set_keyswitch_home_campground.webp",
     mechanical_creature: "/textures/room/texture_set_mechanical_creature.webp",
@@ -140,8 +211,50 @@ const loadedTextures = {
 
 };
 
+// "September 2026" is baked into the room's UV atlas rather than existing as
+// a removable mesh. Patch only its small normalized rectangle and interpolate
+// the surrounding surface colour row-by-row, preserving the rest of the atlas.
+function hideBakedSceneDate(texture) {
+    const image = texture.image;
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth || image.width;
+    canvas.height = image.naturalHeight || image.height;
+
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(image, 0, 0);
+
+    const x0 = Math.floor(canvas.width * 0.746);
+    const x1 = Math.ceil(canvas.width * 0.755);
+    const y0 = Math.floor(canvas.height * 0.006);
+    const y1 = Math.ceil(canvas.height * 0.034);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+    const { data, width } = pixels;
+
+    for (let y = y0; y < y1; y += 1) {
+        for (let x = x0; x < x1; x += 1) {
+            const t = (x - x0) / Math.max(x1 - x0 - 1, 1);
+            const index = (y * width + x) * 4;
+            const leftIndex = (y * width + Math.max(x0 - 3, 0)) * 4;
+            const rightIndex = (y * width + Math.min(x1 + 3, width - 1)) * 4;
+            for (let channel = 0; channel < 3; channel += 1) {
+                data[index + channel] = THREE.MathUtils.lerp(
+                    data[leftIndex + channel],
+                    data[rightIndex + channel],
+                    t,
+                );
+            }
+        }
+    }
+
+    context.putImageData(pixels, 0, 0);
+    texture.image = canvas;
+    texture.needsUpdate = true;
+}
+
 Object.entries(textureMap).forEach(([key, value]) => {
-    const texture = textureLoader.load(value);
+    const texture = textureLoader.load(value, (loadedTexture) => {
+        if (key === 'scene') hideBakedSceneDate(loadedTexture);
+    });
     texture.flipY = false;
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.anisotropy = 8;
@@ -194,6 +307,14 @@ function playHoverSound() {
     hoverSound.play().catch(() => {});
 }
 
+const stickerPlaceSound = new Audio('/audio/hover2.mp3');
+stickerPlaceSound.volume = 0.7;
+
+function playStickerPlaceSound() {
+    stickerPlaceSound.currentTime = 0;
+    stickerPlaceSound.play().catch(() => {});
+}
+
 // Only these groupKeys play the hover blip - the rest of interactiveMeshes
 // (diorama props revealed inside a zoomed-in scene, character pieces, etc.)
 // stay silent on hover.
@@ -231,6 +352,199 @@ window.addEventListener('keydown', unlockBackgroundMusicOnFirstGesture, { once: 
 // which stay visible in the overview at all times.
 let campgroundGroup = null;
 
+// The standalone gallery diorama - same hidden-until-entered pattern as
+// campgroundGroup above, but toggled by interact_3's expanded view instead
+// (see enterGallery further down), which also hides mainModelGroup for the
+// duration so the gallery reads as its own space rather than something
+// tucked into a corner of the desk.
+let galleryGroup = null;
+let resolveGalleryReady;
+const galleryReady = new Promise((resolve) => {
+    resolveGalleryReady = resolve;
+});
+
+// The root of the main desk/keyboard scene (set once the primary GLB below
+// finishes loading) - hidden while inside interact_3's gallery scene.
+let mainModelGroup = null;
+
+// The desk/floor plane (captured during the main GLB traverse below) that
+// click-to-place stickers land on. Named "scene_mat" in the source file -
+// the large flat mesh underneath everything else in the room. DecalGeometry
+// clips against this mesh's own triangles (rather than assuming a flat
+// plane), so a sticker would still conform to any bump/curve in this
+// surface's own geometry if it had one.
+let stickerTargetMesh = null;
+
+// scene_scene is a separate mesh that sits over/around scene_mat (same desk
+// area, different surface) - without checking it too, a raycast aimed at
+// scene_mat would still register a hit even when scene_scene is the thing
+// actually facing the camera there, letting you "click through" it to place
+// a sticker on scene_mat behind/under it. Captured alongside stickerTargetMesh
+// during the main GLB traverse below.
+let stickerOccluderMesh = null;
+
+// True only when the nearest thing the raycaster hits is scene_mat itself -
+// i.e. scene_scene isn't in the way at this point. Used for both the actual
+// placement click and the hover cursor check, so the two stay consistent.
+function raycastStickerTargetHit() {
+    if (!stickerTargetMesh) return null;
+    const candidates = stickerOccluderMesh ? [stickerTargetMesh, stickerOccluderMesh] : [stickerTargetMesh];
+    const intersections = raycaster.intersectObjects(candidates, false);
+    const nearest = intersections[0];
+    return nearest && nearest.object === stickerTargetMesh ? nearest : null;
+}
+
+// The five regular sticker designs (public/stickers/sticker_1.webp ..
+// sticker_5.webp) - one is picked at random per placement in placeSticker
+// below.
+const stickerTextures = [1, 2, 3, 4, 5].map((n) => {
+    const texture = textureLoader.load(`/stickers/sticker_${n}.webp`);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+});
+
+// sticker_6 is a reward design, kept out of the random stickerTextures pool
+// above - it's forced (once, oversized) as the very next sticker placed
+// after every interaction has been found, see the click handler below.
+const stickerBonusTexture = textureLoader.load('/stickers/sticker_6.webp');
+stickerBonusTexture.colorSpace = THREE.SRGBColorSpace;
+const stickerBonusSizeMultiplier = 1.5;
+let bonusStickerAvailable = false;
+let bonusStickerSpawned = false;
+
+// depthWrite: false + polygonOffset keep the decal from z-fighting with the
+// surface it's projected onto - the standard settings for THREE.DecalGeometry
+// (see the three.js webgl_decals example).
+const stickerDecalMaterial = new THREE.MeshBasicMaterial({
+    // Overwritten per-placement with a random pick from stickerTextures
+    // (see placeSticker) - set here only so the material has a valid map
+    // before the first sticker is ever placed.
+    map: stickerTextures[0],
+    // Dims the (unlit) decal down from the texture's raw colors so stickers
+    // don't read as blown-out under the scene's lighting.
+    color: 0x9f9f9f,
+    transparent: true,
+    depthTest: true,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+});
+
+// Reused every placement purely to turn a hit point + surface normal into the
+// euler angles DecalGeometry wants, rather than allocating one per click.
+const stickerOrientationHelper = new THREE.Object3D();
+const stickerLookTarget = new THREE.Vector3();
+const stickerSurfaceNormal = new THREE.Vector3();
+const stickerNormalMatrix = new THREE.Matrix3();
+const stickerSize = new THREE.Vector3(1, 1, 1);
+
+// Placement animation ("peeling" the sticker down onto the surface) and
+// lifetime - how long it stays before fading back out on its own.
+const stickerPeelInDuration = 0.45;
+const stickerPeelLiftDistance = 0.06;
+const stickerPeelStartScale = 1.35;
+const stickerLifetimeSeconds = 6;
+const stickerFadeOutDuration = 0.6;
+
+// Brief cooldown after each placement so a single click (or an accidental
+// double-click) can't stamp down a cluster of overlapping stickers at once.
+const stickerPlacementCooldownMs = 400;
+let stickerCooldownUntil = 0;
+
+// Every decal clones stickerDecalMaterial's base polygonOffsetFactor, so two
+// stickers landing near the same spot (increasingly likely as they pile up)
+// would otherwise sit at the exact same depth-buffer offset and z-fight with
+// each other rather than just the desk surface. Each placement nudges its
+// own offset further from the surface than the last (and bumps renderOrder
+// to match), so overlapping stickers always resolve to a stable draw order
+// instead of flickering.
+let stickerPlacementCounter = 0;
+
+// Projects a flat decal onto stickerTargetMesh at the raycast hit point,
+// oriented to the surface normal there. DecalGeometry bakes its vertices in
+// world space (it clips against the mesh's world-space triangles), so the
+// decal is added straight to `scene` rather than parented under
+// stickerTargetMesh - that mesh carries a heavily non-uniform world scale
+// (baked in from the source file), and Object3D.attach() can't decompose the
+// shear that combination produces into a valid local transform. Adding
+// directly to the scene sidesteps that entirely; the mesh is static at
+// runtime so there's no "stays put if the mesh moves" tradeoff to worry about.
+function placeSticker(intersection, { forcedTexture = null, sizeMultiplier = 1, noFade = false } = {}) {
+    if (isSoundEnabled) playStickerPlaceSound();
+
+    const targetMesh = intersection.object;
+
+    // A plain transformDirection(matrixWorld) only gives the correct normal
+    // for pure rotation/uniform-scale matrices - under stickerTargetMesh's
+    // non-uniform scale it comes out skewed enough to flip decals away from
+    // the camera. The inverse-transpose ("normal matrix") is what correctly
+    // carries a normal through non-uniform scale.
+    stickerNormalMatrix.getNormalMatrix(targetMesh.matrixWorld);
+    stickerSurfaceNormal.copy(intersection.face.normal)
+        .applyMatrix3(stickerNormalMatrix)
+        .normalize();
+
+    stickerOrientationHelper.position.copy(intersection.point);
+    stickerLookTarget.copy(intersection.point).add(stickerSurfaceNormal);
+    stickerOrientationHelper.lookAt(stickerLookTarget);
+    // Spin the decal randomly around the surface normal so repeated stickers
+    // don't all land facing the same way.
+    stickerOrientationHelper.rotateZ(Math.random() * Math.PI * 2);
+
+    const decalSize = sizeMultiplier === 1 ? stickerSize : stickerSize.clone().multiplyScalar(sizeMultiplier);
+    const geometry = new DecalGeometry(targetMesh, intersection.point, stickerOrientationHelper.rotation, decalSize);
+    // Re-center the (world-space-baked) geometry on the hit point, so the
+    // mesh's own position/scale - animated below for the peel-in - transform
+    // around the sticker's own center instead of the scene origin.
+    geometry.translate(-intersection.point.x, -intersection.point.y, -intersection.point.z);
+
+    // Cloned per placement (rather than sharing stickerDecalMaterial) so each
+    // sticker's fade-in/fade-out opacity tween is independent of every other
+    // one currently on screen.
+    const material = stickerDecalMaterial.clone();
+    material.map = forcedTexture || stickerTextures[Math.floor(Math.random() * stickerTextures.length)];
+    material.opacity = 0;
+    // Stagger each placement's offset (wrapped so it stays bounded across a
+    // long session) so stickers landing near the same spot don't share a
+    // depth-buffer offset with each other - see stickerPlacementCounter above.
+    material.polygonOffsetFactor -= stickerPlacementCounter % 20;
+
+    const decal = new THREE.Mesh(geometry, material);
+    decal.position.copy(intersection.point).addScaledVector(stickerSurfaceNormal, stickerPeelLiftDistance);
+    decal.scale.setScalar(stickerPeelStartScale);
+    decal.renderOrder = stickerPlacementCounter;
+    stickerPlacementCounter += 1;
+    scene.add(decal);
+
+    // "Peeling" placement: starts lifted slightly off the surface (along its
+    // own normal) and a touch oversized, then settles flush and fades in -
+    // reads as pressing/smoothing a sticker down rather than it just popping
+    // into existence.
+    gsap.to(decal.position, {
+        x: intersection.point.x, y: intersection.point.y, z: intersection.point.z,
+        duration: stickerPeelInDuration, ease: 'back.out(1.7)',
+    });
+    gsap.to(decal.scale, { x: 1, y: 1, z: 1, duration: stickerPeelInDuration, ease: 'back.out(1.7)' });
+    gsap.to(material, { opacity: 1, duration: stickerPeelInDuration * 0.6, ease: 'power1.out' });
+
+    // Auto-disappear after a while, fading out before actually being removed
+    // - skipped for the reward sticker_6 placement (noFade: true), which
+    // sticks around permanently instead.
+    if (!noFade) {
+        gsap.to(material, {
+            opacity: 0,
+            duration: stickerFadeOutDuration,
+            delay: stickerLifetimeSeconds,
+            ease: 'power1.in',
+            onComplete: () => {
+                scene.remove(decal);
+                geometry.dispose();
+                material.dispose();
+            },
+        });
+    }
+}
+
 // Pairs up a keycap with its "_letter(s)" companion mesh even though the
 // two don't share a naming prefix, e.g. "transparent_interact_1" and
 // "interact_1_letters" both normalize to "1". Some meshes carry extra
@@ -251,9 +565,26 @@ const nonKeycapGroupKeys = new Set(['contact', 'giraffebig', 'giraffesmall', 'du
 // hover-scale lerp defers to while a group's reveal tween is in flight.
 const revealingGroupKeys = new Set();
 
+// Direct URL routes skip the enter gate and therefore skip playIntroWave().
+// These decorative props begin at scale zero specifically for that wave, so
+// routed entry (and any gallery return) must explicitly restore them.
+function ensureIntroPropsVisible() {
+    interactiveMeshes
+        .filter((mesh) => nonKeycapGroupKeys.has(mesh.userData.groupKey))
+        .forEach((mesh) => {
+            gsap.killTweensOf(mesh.scale);
+            if (mesh.userData.initialScale) mesh.scale.copy(mesh.userData.initialScale);
+        });
+    nonKeycapGroupKeys.forEach((groupKey) => revealingGroupKeys.delete(groupKey));
+}
+
 // These groups share an identical stage[0] zoom (same position/lookAt), so once
 // zoomed into that shared shot, clicking any of the others should carry on into
 // its own stage[1] instead of requiring the exact same key that was first clicked.
+// "3" shares this same stage[0] too, but it has no stage[1] of its own - a
+// second click once already on it (whether it got there via '1', '2', or '3'
+// itself) goes straight to enterGallery instead of advancing a further stage
+// (see galleryGroupKey/galleryStageIndex and scenes['3'] below).
 const sharedFirstStageGroupKeys = new Set(['1', '2', '3']);
 
 let isAnimatingCamera = false;
@@ -295,7 +626,7 @@ const scenes = {
     },
     duck: {
         liftMesh: false,
-        label: { title: 'Duck Model', date: '7 April 2023', client: 'bazarnov3d' },
+        label: { title: 'Knife Duck', date: '7 April 2023', client: 'bazarnov3d' },
         stages: [
             {
                 position: new THREE.Vector3(3.720, 1.733, -0.633),
@@ -364,7 +695,7 @@ const scenes = {
     },
     hitbox: {
         liftMesh: false,
-        label: { title: 'Cottage', date: '6 July 2026' },
+        label: { title: 'Cottagecore', date: '6 July 2026' },
         // The key3 character diorama isn't part of this scene's own button
         // group, but should stay hoverable/interactive while this scene is
         // zoomed in (same pattern as f12's extraInteractiveGroupKeys below).
@@ -392,7 +723,7 @@ const scenes = {
     },
     2: {
         liftMesh: false,
-        label: { title: 'Elements', date: '7 April 2025' },
+        label: { title: 'Watch Diorama', date: '7 April 2025' },
         stages: [
             {
                 position: new THREE.Vector3(-2.788, 2.091, 0.038),
@@ -406,19 +737,32 @@ const scenes = {
     },
     3: {
         liftMesh: false,
+        // Shares its only stage with '1'/'2' (see sharedFirstStageGroupKeys) -
+        // the actual switch into the gallery's standalone diorama happens as
+        // soon as the user clicks interact_3 a second time from there (see
+        // galleryGroupKey/galleryStageIndex and enterGallery further down),
+        // with no separate single-key zoom stage in between.
+        // interact_table lives in the gallery's own diorama (a separate glb,
+        // not this scene's own button group - same pattern as f12/hitbox's
+        // own extraInteractiveGroupKeys above) - stays hoverable/clickable
+        // for as long as zoomedGroupKey is '3', which covers the whole
+        // gallery visit (see enterGalleryTable further down).
+        extraInteractiveGroupKeys: ['table'],
         stages: [
             {
                 position: new THREE.Vector3(-2.788, 2.091, 0.038),
                 lookAt: new THREE.Vector3(-2.787, 1.203, -0.309),
             },
-            {
-                position: new THREE.Vector3(-2.531, 1.296, -0.167),
-                lookAt: new THREE.Vector3(-2.355, 0.723, -0.485),
-            },
         ],
     },
     light: {
         liftMesh: false,
+        // Single-stage scene with nothing further to click through, so once
+        // the camera lands it just sits there idle - ease it into a slow
+        // orbit around the lookAt point (the light fixture) instead, and
+        // stop as soon as the scene is left.
+        onArrive: () => { controls.autoRotate = true; },
+        onExit: () => { controls.autoRotate = false; },
         stages: [
             {
                 position: new THREE.Vector3(8.607, 8.217, 10.468),
@@ -473,6 +817,34 @@ const scenes = {
 // find instead of two, both for the total below and in the click listener.
 const countedInteractionGroupKey = (groupKey) => (groupKey === 'me' ? 'about' : groupKey);
 
+const sceneRouteMap = {
+    contact: 'contact',
+    duck: 'duck',
+    about: 'about',
+    skytower: 'f12',
+    home: 'home',
+    'mechanical-creature': 'control_creature',
+    cottage: 'hitbox',
+    'desktop-room': '1',
+    elements: '2',
+    gallery: '3',
+    light: 'light',
+    campground: 'esc',
+};
+
+const sceneSlugByGroupKey = Object.fromEntries(
+    Object.entries(sceneRouteMap).map(([slug, groupKey]) => [groupKey, slug]),
+);
+
+function replaceRouteHash(hash = '') {
+    history.replaceState(null, '', `${location.pathname}${location.search}${hash}`);
+}
+
+function setSceneRoute(groupKey) {
+    const slug = sceneSlugByGroupKey[groupKey];
+    if (slug) replaceRouteHash(`#scene-${slug}`);
+}
+
 // Total number of camera-moving interactions - one per distinct scenes[]
 // entry (after the about/me merge above), since that object doubles as
 // "every groupKey a click can actually zoom into" (see the `if (scene)`
@@ -488,7 +860,7 @@ const environmentMap = new THREE.CubeTextureLoader(loadingManager)
 
     ]);
 
-gltfLoader.load("/models/portfolio_project_model_v11_compressed.glb", (glb) => {
+gltfLoader.load("/models/portfolio_project_model_v13_compressed.glb", (glb) => {
     glb.scene.traverse((child) => {
         if (!child.isMesh) return;
 
@@ -497,6 +869,14 @@ gltfLoader.load("/models/portfolio_project_model_v11_compressed.glb", (glb) => {
         // the two don't overlap.
         if (child.name === "keyswitch_home_campground_Campground") {
             child.visible = false;
+        }
+
+        if (child.name === "scene_mat") {
+            stickerTargetMesh = child;
+        }
+
+        if (child.name === "scene_scene") {
+            stickerOccluderMesh = child;
         }
 
         if (child.name.includes("interact")) {
@@ -556,6 +936,7 @@ gltfLoader.load("/models/portfolio_project_model_v11_compressed.glb", (glb) => {
         });
     });
 
+    mainModelGroup = glb.scene;
     scene.add(glb.scene);
     glb.scene.updateMatrixWorld(true);
 
@@ -610,7 +991,44 @@ gltfLoader.load("/models/campground_v2_compressed.glb", (glb) => {
     scene.add(campgroundGroup);
 });
 
+// Standalone gallery diorama - same pattern as campgroundGroup above, but
+// gated on interact_3's own expanded view instead, which also hides
+// mainModelGroup while this is visible (see enterGallery further down)
+// rather than just parking it off to the side of the desk.
+gltfLoader.load("/models/gallery_v3_compressed.glb", (glb) => {
+    galleryGroup = glb.scene;
+
+    galleryGroup.traverse((child) => {
+        if (!child.isMesh) return;
+
+        child.material = new THREE.MeshBasicMaterial({ map: loadedTextures.gallery });
+        child.material.map.minFilter = THREE.LinearMipmapLinearFilter;
+
+        // interact_table (see enterGalleryTable/handleInteraction further
+        // down) - same "interact_" naming convention as the main model's own
+        // keycaps (see getInteractGroupKey above), pushed into the shared
+        // interactiveMeshes list so it hovers/raycasts the same way despite
+        // living in this separate diorama. Not a keyboard key (no press
+        // lift), just the generic hover pop every other non-keycap prop gets.
+        if (child.name.includes("interact")) {
+            child.userData.initialScale = child.scale.clone();
+            child.userData.initialPosition = child.position.clone();
+            child.userData.groupKey = getInteractGroupKey(child.name);
+            child.userData.isKeyboardKey = false;
+
+            interactiveMeshes.push(child);
+        }
+    });
+
+    galleryGroup.position.set(0, 0, 0);
+    galleryGroup.visible = false;
+
+    scene.add(galleryGroup);
+    resolveGalleryReady();
+});
+
 const scene = new THREE.Scene();
+window.__debugScene = scene;
 
 const camera = new THREE.PerspectiveCamera( 45, sizes.width / sizes.height, 0.1, 1000 );
 
@@ -643,6 +1061,11 @@ controls.panSpeed = 0.8;
 controls.maxPolarAngle = Math.PI / 2 - 0.05;
 controls.minDistance = overviewMinDistance;
 controls.maxDistance = 15;
+// Slow idle orbit used by scenes that flag onArrive/onExit with
+// controls.autoRotate (currently just "light") - autoRotate spins around
+// controls.target regardless of controls.enabled, since OrbitControls only
+// gates it on its own drag state, not the enabled flag (see its update()).
+controls.autoRotateSpeed = 0.6;
 
 controls.addEventListener('end', () => {
     const p = camera.position;
@@ -728,16 +1151,23 @@ function hideSwitchingScenes() {
 // glide across the room never peeks through the still-fading overlay, then
 // holds again once arrived before revealing the destination - reads as a
 // deliberate scene change rather than a flash-cut.
-function animateCameraBehindOverlay(position, lookAt, { onComplete, ...options } = {}) {
+function animateCameraBehindOverlay(position, lookAt, { onCovered, onComplete, ...options } = {}) {
     showSwitchingScenes();
     switchingScenesStartTimeout = setTimeout(() => {
         switchingScenesStartTimeout = null;
-        animateCameraTo(position, lookAt, {
-            ...options,
-            onComplete: () => {
-                onComplete?.();
-                switchingScenesHideTimeout = setTimeout(hideSwitchingScenes, switchingScenesHoldMs);
-            },
+        Promise.resolve(onCovered?.()).catch((error) => {
+            // A failed precompile should not leave the user trapped behind
+            // the switching screen; the destination can still render using
+            // the browser's normal lazy compilation path.
+            console.warn('Scene preparation did not complete cleanly:', error);
+        }).then(() => {
+            animateCameraTo(position, lookAt, {
+                ...options,
+                onComplete: () => {
+                    onComplete?.();
+                    switchingScenesHideTimeout = setTimeout(hideSwitchingScenes, switchingScenesHoldMs);
+                },
+            });
         });
     }, switchingScenesFadeMs + switchingScenesHoldMs);
 }
@@ -772,8 +1202,182 @@ function resetFreeCameraBounds() {
     controls.maxDistance = 15;
 }
 
+// True only once interact_3's expanded view has actually been clicked
+// through into the gallery diorama (see enterGallery below) - not just while
+// zoomed into the keycap itself. Lets finishExitingToOverview/exitZoomedScene
+// know to undo the mainModelGroup/galleryGroup swap and treat the exit glide
+// as a full scene change, without scenes['3'] needing its own onExit/
+// transitionOverlay that would also fire for a plain keycap zoom-out.
+let isGalleryEntered = false;
+
+// Keeps the gallery camera centred on the room instead of allowing it to
+// pan through walls or orbit around behind the diorama.
+const galleryCameraBounds = {
+    azimuthSpreadRad: THREE.MathUtils.degToRad(55),
+    polarSpreadRad: THREE.MathUtils.degToRad(22),
+    zoomInFactor: 0.55,
+};
+
+function showGalleryTableHint() {
+    if (
+        !isGalleryEntered
+        || !galleryGroup?.visible
+        || isGalleryTableZoomedIn
+        || isWebpageOpen
+    ) return;
+    galleryTableHint.classList.add('visible');
+}
+
+function hideGalleryTableHint() {
+    galleryTableHint.classList.remove('visible');
+    galleryTableHint.style.visibility = '';
+}
+
+const galleryHintBounds = new THREE.Box3();
+const galleryHintAnchor = new THREE.Vector3();
+const galleryHintSize = new THREE.Vector3();
+
+function updateGalleryTableHintPosition() {
+    if (!galleryTableHint.classList.contains('visible')) return;
+    if (
+        !isGalleryEntered
+        || !galleryGroup?.visible
+        || isGalleryTableZoomedIn
+        || isWebpageOpen
+    ) {
+        hideGalleryTableHint();
+        return;
+    }
+
+    const tableMeshes = interactiveMeshes.filter(
+        (mesh) => mesh.userData.groupKey === 'table' && mesh.visible,
+    );
+    if (!tableMeshes.length) {
+        galleryTableHint.style.visibility = 'hidden';
+        return;
+    }
+
+    galleryHintBounds.makeEmpty();
+    tableMeshes.forEach((mesh) => galleryHintBounds.expandByObject(mesh));
+    galleryHintBounds.getCenter(galleryHintAnchor);
+    galleryHintBounds.getSize(galleryHintSize);
+
+    // Lift the anchor above the table's world-space bounding box, then
+    // project it through the live camera into screen coordinates.
+    galleryHintAnchor.y = galleryHintBounds.max.y + galleryHintSize.y * 1.15;
+    galleryHintAnchor.project(camera);
+
+    const isOnScreen =
+        galleryHintAnchor.z >= -1
+        && galleryHintAnchor.z <= 1
+        && Math.abs(galleryHintAnchor.x) <= 1.1
+        && Math.abs(galleryHintAnchor.y) <= 1.1;
+
+    galleryTableHint.style.visibility = isOnScreen ? 'visible' : 'hidden';
+    if (!isOnScreen) return;
+
+    galleryTableHint.style.left = `${(galleryHintAnchor.x * 0.5 + 0.5) * sizes.width}px`;
+    galleryTableHint.style.top = `${(-galleryHintAnchor.y * 0.5 + 0.5) * sizes.height}px`;
+}
+
+// Clicking interact_3 again once already on its shared stage[0] shot (see
+// galleryGroupKey/galleryStageIndex) swaps the whole scene into the
+// gallery's standalone diorama - same transitionOverlay-covered glide +
+// freeCamera handoff a fresh freeCamera scene entry gets (see
+// handleInteraction's initial-zoom branch), just triggered from a second
+// click already zoomed onto the shared shot instead of from the overview.
+// onComplete: fires once the camera lands on the gallery's overview shot -
+// openGalleryFromMenu below chains straight into enterGalleryTable so
+// clicking "Projects" ends up exactly where clicking interact_table would,
+// instead of stopping one click short at the bare diorama.
+function enterGallery(onComplete) {
+    isGalleryEntered = true;
+    zoomedFreeCamera = true;
+    sceneExitButton.classList.add('visible');
+
+    animateCameraBehindOverlay(
+        new THREE.Vector3(-0.200, 0.354, 0.800),
+        new THREE.Vector3(0.141, 0.100, -0.306),
+        {
+            onCovered: async () => {
+                // Do not expose the scene swap, model completion, or the
+                // first material/shader compile before the transition is
+                // fully opaque.
+                await galleryReady;
+                if (mainModelGroup) mainModelGroup.visible = false;
+                galleryGroup.visible = true;
+                await renderer.compileAsync(scene, camera);
+            },
+            onComplete: () => {
+                applyFreeCameraBounds(galleryCameraBounds);
+                showGalleryTableHint();
+                onComplete?.();
+            },
+        },
+    );
+}
+
+// True once interact_table has been clicked and the camera has zoomed in on
+// it - only then does showGalleryProjectsDisplay actually get called (see
+// handleInteraction's 'table' branch below). Reset alongside
+// hideGalleryProjectsDisplay in exitZoomedScene so leaving and re-entering
+// the gallery requires clicking the table again.
+let isGalleryTableZoomedIn = false;
+
+// Where the camera was, within the gallery diorama, right before dollying in
+// on the table - captured so the "X" shortcut below can dolly back out to
+// that exact free-roam spot instead of snapping to the fixed gallery-entry
+// shot (the camera is freeCamera the whole time it's in the gallery, so the
+// user may well have orbited/panned before ever clicking the table).
+const preTableCameraPosition = new THREE.Vector3();
+const preTableCameraTarget = new THREE.Vector3();
+
+// Dollies in on a hand-placed shot of interact_table - only reveals the
+// carousel once that lands, the same "arrive, then open" beat interact_1/2's
+// own webpage panel uses on their final stage.
+function enterGalleryTable() {
+    if (isGalleryTableZoomedIn) return;
+    isGalleryTableZoomedIn = true;
+    hideGalleryTableHint();
+    // The one genuine "fresh start" for the carousel - reset here rather
+    // than in showGalleryProjectsDisplay itself, since that's also called to
+    // resurface the carousel after closing a project's detail page (see
+    // closeWebpage), which should land back on whichever project was open,
+    // not snap back to the first one.
+    galleryDisplayIndex = 0;
+
+    preTableCameraPosition.copy(camera.position);
+    preTableCameraTarget.copy(controls.target);
+
+    animateCameraTo(
+        new THREE.Vector3(-0.113, 0.224, 0.583),
+        new THREE.Vector3(0.168, 0.174, -0.376),
+        { onComplete: showGalleryProjectsDisplay },
+    );
+}
+
+// Reverses enterGalleryTable - hides the floating carousel and dollies back
+// out to wherever the camera was in the gallery before it zoomed in on the
+// table, without leaving the gallery diorama itself (see exitZoomedScene for
+// that further step, chained after this by the "X" shortcut below on a
+// second press).
+function exitGalleryTable() {
+    if (!isGalleryTableZoomedIn) return;
+    isGalleryTableZoomedIn = false;
+    hideGalleryProjectsDisplay();
+    animateCameraTo(preTableCameraPosition, preTableCameraTarget, {
+        onComplete: showGalleryTableHint,
+    });
+}
+
 function finishExitingToOverview() {
     scenes[zoomedGroupKey]?.onExit?.();
+    if (isGalleryEntered) {
+        ensureIntroPropsVisible();
+        if (mainModelGroup) mainModelGroup.visible = true;
+        if (galleryGroup) galleryGroup.visible = false;
+        isGalleryEntered = false;
+    }
     if (zoomedFreeCamera) resetFreeCameraBounds();
     isContactZoomedIn = false;
     zoomedGroupKey = null;
@@ -781,6 +1385,7 @@ function finishExitingToOverview() {
     zoomedLiftsMesh = false;
     zoomedFreeCamera = false;
     isExitingToOverview = false;
+    if (location.hash.startsWith('#scene-')) replaceRouteHash();
 }
 
 // Leaves whichever scene is currently zoomed in and glides the camera back
@@ -791,6 +1396,11 @@ function finishExitingToOverview() {
 // back in besides Escape.
 function exitZoomedScene(onComplete) {
     sceneExitButton.classList.remove('visible');
+    if (isGalleryEntered) {
+        hideGalleryTableHint();
+        hideGalleryProjectsDisplay();
+        isGalleryTableZoomedIn = false;
+    }
 
     if (zoomedLiftsMesh) {
         interactiveMeshes
@@ -809,8 +1419,12 @@ function exitZoomedScene(onComplete) {
 
     // Covers the glide back out the same way the zoom-in does (see
     // handleInteraction's initial-zoom branch) - the exit crosses the
-    // same long distance across the room, just in reverse.
-    const exitingTransitionOverlay = scenes[zoomedGroupKey]?.transitionOverlay;
+    // same long distance across the room, just in reverse. isGalleryEntered
+    // covers interact_3 specifically: its scene entry itself is a plain
+    // (non-overlay) keycap zoom, so only the exit out of the gallery diorama
+    // reached via enterGallery needs the overlay, not exiting from the
+    // keycap zoom before ever reaching it.
+    const exitingTransitionOverlay = isGalleryEntered || scenes[zoomedGroupKey]?.transitionOverlay;
     const finish = () => {
         finishExitingToOverview();
         onComplete?.();
@@ -860,6 +1474,16 @@ canvas.addEventListener('wheel', interruptExitToOverview, { passive: true });
 function handleInteraction(targetGroupKey) {
     if (isWebpageOpen || isMenuOpen || isBottomPanelOpen) return;
 
+    // interact_table only exists (and is only raycastable) once inside the
+    // gallery diorama - handled here rather than falling into the desk
+    // keyboard's own zoom/advance state machine below, since it's a further
+    // dolly-in on top of the gallery's existing freeCamera shot, not a fresh
+    // scenes[] entry (see enterGalleryTable above).
+    if (targetGroupKey === 'table' && isGalleryEntered && !isGalleryTableZoomedIn) {
+        enterGalleryTable();
+        return;
+    }
+
     if (isContactZoomedIn) {
         const stillOnSameObject = targetGroupKey !== null && targetGroupKey === zoomedGroupKey;
         const canSwitchSharedGroup = targetGroupKey !== null
@@ -875,21 +1499,33 @@ function handleInteraction(targetGroupKey) {
         if ((stillOnSameObject || canSwitchSharedGroup) && nextStage) {
             zoomedGroupKey = nextTargetGroupKey;
             zoomStageIndex += 1;
+            animateCameraTo(nextStage.position, nextStage.lookAt);
+            return;
+        }
 
-            const opensWebpage = zoomedGroupKey === webpageGroupKey && zoomStageIndex === webpageStageIndex;
-            const opensBottomPanel = zoomedGroupKey === bottomPanelGroupKey && zoomStageIndex === bottomPanelStageIndex;
-            const onStageArrived = opensWebpage
-                ? openWebpage
-                : opensBottomPanel ? openInteract2BottomPanel : undefined;
-            animateCameraTo(nextStage.position, nextStage.lookAt, onStageArrived ? { onComplete: onStageArrived } : undefined);
+        // Re-clicking interact_3 once already settled on its shared stage[0]
+        // shot - whether it got there via '1', '2', or '3' itself - doesn't
+        // step back out or advance a further camera stage: it swaps the whole
+        // scene into the gallery diorama instead. Guarded on !isGalleryEntered
+        // so a second re-click (or pressing "3" again) once already inside the
+        // gallery falls through to the toggle-exit below instead of trying to
+        // enter it twice.
+        if ((stillOnSameObject || canSwitchSharedGroup) && !nextStage && !isGalleryEntered
+            && nextTargetGroupKey === galleryGroupKey && zoomStageIndex === galleryStageIndex) {
+            zoomedGroupKey = nextTargetGroupKey;
+            enterGallery();
             return;
         }
 
         // Clicking outside any interactive mesh, or re-clicking the same key
-        // once there's no further stage to advance to (e.g. interact_1/2/3's
+        // once there's no further stage to advance to (e.g. interact_1/2's
         // own stage[1] shot), steps back to the previous stage instead of
-        // exiting all the way out to the pre-zoom view.
-        if (zoomStageIndex > 0 && (targetGroupKey === null || (stillOnSameObject && !nextStage))) {
+        // exiting all the way out to the pre-zoom view. Skipped while
+        // isGalleryEntered - re-triggering interact_3 (only reachable via the
+        // keyboard shortcut, since the keycap mesh itself is hidden by then)
+        // should toggle-exit the gallery like Escape does for the campground,
+        // not step the camera back onto a now-hidden desk shot.
+        if (zoomStageIndex > 0 && !isGalleryEntered && (targetGroupKey === null || (stillOnSameObject && !nextStage))) {
             const previousStage = scenes[zoomedGroupKey].stages[zoomStageIndex - 1];
             zoomStageIndex -= 1;
             animateCameraTo(previousStage.position, previousStage.lookAt);
@@ -905,6 +1541,7 @@ function handleInteraction(targetGroupKey) {
     const scene = scenes[targetGroupKey];
 
     if (scene) {
+        setSceneRoute(targetGroupKey);
         const { liftMesh, stages } = scene;
         const firstStage = stages[0];
 
@@ -936,7 +1573,22 @@ function handleInteraction(targetGroupKey) {
         sceneExitButton.classList.toggle('visible', zoomedFreeCamera);
 
         const onArrived = () => {
-            if (zoomedFreeCamera) applyFreeCameraBounds(scene.freeCameraBounds);
+            // A freeCamera scene with no freeCameraBounds (e.g. the gallery,
+            // meant to be freely explorable, or while a shot is still being
+            // tuned) is left fully unrestricted - same rotate/pan/zoom range
+            // as the overview - rather than requiring bounds. Checked via
+            // scene.freeCameraBounds itself, not just zoomedFreeCamera: this
+            // closure reads the live (mutable) zoomedFreeCamera binding, not
+            // a snapshot from whenever it was created, so it can still fire
+            // after a *later* click has flipped zoomedFreeCamera true for a
+            // different reason - e.g. interact_3's own second click swapping
+            // into the gallery (see enterGallery) before this same-key first
+            // click's own tween has finished arriving. Without this check
+            // that race called applyFreeCameraBounds(undefined), which set
+            // controls.enablePan = false (its first line) right before
+            // throwing on the bounds it never got - silently killing panning
+            // in the gallery on essentially every visit.
+            if (zoomedFreeCamera && scene.freeCameraBounds) applyFreeCameraBounds(scene.freeCameraBounds);
             // Only fires for single-stage scenes (e.g. about/me) - their one
             // stage is also their final destination, unlike multi-stage
             // scenes (e.g. "1") where stage[0] is just the shared overview
@@ -953,6 +1605,12 @@ function handleInteraction(targetGroupKey) {
 }
 
 window.addEventListener('click', (event) => {
+    // The enter gate sits on top of the whole scene (see #enter-gate in
+    // style.scss) but this listener is window-level, so without this guard
+    // a click anywhere on the gate - not just its buttons - would still
+    // reach whatever key/sticker surface happens to be underneath it.
+    if (isEnterGateOpen) return;
+
     // Checked against isWebpageOpen's value from *before* this click is
     // processed, so the very click that opens the panel (isWebpageOpen still
     // false here) never immediately closes itself further down.
@@ -980,6 +1638,11 @@ window.addEventListener('click', (event) => {
     if (groupKey !== null && scenes[groupKey] && !discoveredGroupKeys.has(countedGroupKey)) {
         discoveredGroupKeys.add(countedGroupKey);
         interactionCounterValue.textContent = `${discoveredGroupKeys.size}/${totalInteractionCount}`;
+
+        if (discoveredGroupKeys.size === totalInteractionCount) {
+            bonusStickerAvailable = true;
+            interactionCounterValue.classList.add('complete');
+        }
     }
 
     // interact_volume mutes/unmutes instead of zooming into a scene - same
@@ -996,125 +1659,330 @@ window.addEventListener('click', (event) => {
     // (or Escape) is the way out instead.
     if (groupKey === null && zoomedFreeCamera) return;
 
+    // A plain click that didn't land on any interactive key normally does
+    // nothing in the overview (handleInteraction(null) below is a no-op
+    // there), so stamping a sticker down on the bare desk/floor can't steal
+    // a click meant for anything else.
+    if (groupKey === null && !isContactZoomedIn && !isWebpageOpen && !isMenuOpen && !isBottomPanelOpen
+        && stickerTargetMesh && Date.now() >= stickerCooldownUntil) {
+        raycaster.setFromCamera(pointer, camera);
+        const stickerHit = raycastStickerTargetHit();
+        if (stickerHit) {
+            if (bonusStickerAvailable && !bonusStickerSpawned) {
+                bonusStickerSpawned = true;
+                placeSticker(stickerHit, {
+                    forcedTexture: stickerBonusTexture,
+                    sizeMultiplier: stickerBonusSizeMultiplier,
+                    noFade: true,
+                });
+            } else {
+                placeSticker(stickerHit);
+            }
+            stickerCooldownUntil = Date.now() + stickerPlacementCooldownMs;
+            return;
+        }
+    }
+
     handleInteraction(groupKey);
 });
 
-// The 19 project stills dropped into public/images (image_1.webp ... image_19.webp),
-// grouped into rows in the same reading order as the reference layout: one
-// full-width image, a row of 2, one full-width, three rows of 3, a row of 2,
-// one full-width, a row of 2, one full-width. `image` is the filename
-// number. The filenames aren't in this order on disk, so the grouping below
-// was matched by hand against the reference screenshot rather than just
-// counting up from 1.
-//
-// Unlike a fixed-column grid, each row is laid out at runtime (see
-// layoutProjectsGallery) by that row's own images' *real* aspect ratios -
-// they're all different sizes, so a uniform grid would either stretch or
-// crop most of them. Instead every image in a row is scaled to a shared row
-// height so the row's width comes out even, the same "justified" technique
-// photo-gallery grids use - nothing gets cropped, and images keep their own
-// proportions.
-const projectGalleryRows = [
-    [3],
-    [7, 5],
-    [2],
-    [12, 9, 8],
-    [17, 16, 18],
-    [13, 15, 4],
-    [10, 11],
-    [14],
-    [19, 6],
-    [1],
+// Project data shared by the gallery carousel and the full-page project
+// detail interface. The five entries with a
+// groupKey carry real title/date/(client) metadata already established in
+// `scenes` above - their "VIEW IN 3D" button drops the camera straight into
+// that actual keycap scene. Every other field (category/role/description)
+// below is this session's best reading of what each render depicts, not
+// confirmed copy - swap in the real thing whenever you have it.
+const projectsData = [
+    { key: 'watch-diorama', title: 'Watch Diorama', image: '/images/image_3.webp', date: '7 April 2025', category: '—', role: 'Modelling', description: 'Using 3D environments to explode a watch and contrast its mechanical structure with the warmth of a miniature cafe and workstation.', groupKey: '2' },
+    { key: 'desktop-room', title: 'Desktop Room', image: '/images/image_2.webp', date: '20 January 2025', category: 'Andrew Woan', role: 'Modelling', description: 'The dream room with all creative power, warm and ambient lighting.', groupKey: '1' },
+    { key: 'cottagecore', title: 'Cottagecore', image: '/images/image_1.webp', date: '6 July 2026', category: '—', role: 'Modelling', description: 'A whimsical miniature village built between oversized keyboard keys', groupKey: 'hitbox' },
+    { key: 'knife-duck', title: 'Knife Duck', image: '/images/image_5.webp', date: '7 April 2023', category: 'bazarnov3d', role: 'Sculpting', description: 'Run!', groupKey: 'duck' },
+    { key: 'fractal-cubes', title: 'Fractal Cubes', image: '/images/image_12.webp', date: '23 March 2023', category: '—', role: 'Geometry Nodes', description: 'Experimentation with fractals, emissive textures and mathematical calculations using geometry nodes.' },
+    { key: 'cinematic-rain', title: 'Cinematic Rain', image: '/images/image_9.webp', date: '19 April 2023', category: '—', role: 'Realism', description: 'How do we hide 2D planes inside 3D environments? Raindrops made from 2D planes.' },
+    { key: 'gilded-fractal', title: 'Gilded Fractal', image: '/images/image_7.webp', date: '22 April 2023', category: '—', role: 'Geometry Nodes', description: 'Inverted faces could be gold!' },
+    { key: 'dispersed-glass', title: 'Dispersed Glass', image: '/images/image_8.webp', date: '10 May 2023', category: 'atti', role: 'Geometry Nodes', description: 'An abstract material study using sweeping curved forms, translucent surfaces and reflections to create a futuristic tunnel-like composition.' },
+    { key: 'kauri-dieback-project', title: 'Kauri Dieback Project', image: '/images/image_17.webp', date: '21 October 2022', category: '—', role: 'Modelling', description: 'Ideation for a project using 3D modelling.' },
+    { key: 'wheres-my-cat', title: "Where's my Cat?", image: '/images/image_4.webp', date: '3 September 2024', category: 'The Goose Tavern', role: 'Grease Pencil', description: 'The name says it all.' },
+    { key: 'music-living-room', title: 'Music Living Room', image: '/images/image_11.webp', date: '29 December 2023', category: '—', role: 'Animation', description: 'Experimenting with low and high poly meshes to create a cohesive scene and learning about proportions.' },
+    { key: 'hillside-bloom', title: 'Hillside Bloom', image: '/images/image_10.webp', date: '19 December 2024', category: 'CG Geek', role: 'Realism', description: 'Learning about realism and modelling trees, including add-ons and the manual creation of textures.' },
+    { key: 'mechanical-creature', title: 'Mechanical Creature', image: '/images/image_14.webp', date: '2 July 2023', category: 'Polyford', role: 'Rigging', description: 'A rigged robotic spider concept built from articulated limbs, mechanical joints and cables to explore complex movement and animation.', groupKey: 'control_creature' },
+    { key: 'chunky-giraffe', title: 'Chunky Giraffe', image: '/images/image_6.webp', date: '6 April 2023', category: 'Gabbit', role: 'Sculpting', description: 'A 3D model of a giraffe capable of being 3D printed.' },
+    { key: 'animation-study', title: 'Animation Study', image: '/images/image_16.webp', date: '12 October 2022', category: 'Polygon Runaway', role: 'Animation', description: 'A stylised botanical study focused on natural branching patterns, leaf variation and a clean minimalist presentation.' },
+    { key: 'keyswitch-study', title: 'Keyswitch Study', image: '/images/image_13.webp', date: '3 March 2024', category: '—', role: 'Modelling', description: 'An experiment in turning objects in my room into digital 3D models.' },
+    { key: 'sailboat', title: 'Sailboat', image: '/images/image_15.webp', date: '5 January 2023', category: 'Polygon Runaway', role: 'Texturing', description: 'A stylised sailboat scene combining simplified modelling with a glossy sculpted water surface and soft studio lighting.' },
+    { key: 'the-start-of-the-journey', title: 'The Start of the Journey', image: '/images/image_19.webp', date: '17 September 2022', category: 'Polygon Runaway', role: 'Modelling', description: 'Discovered the power of 3D modelling through modelling a miniature house after a sequence of failed projects.', groupKey: 'home' },
 ];
 
-function buildProjectsGallery() {
-    const gallery = document.createElement('div');
-    gallery.className = 'projects-gallery reveal';
+const projectIndexLabel = (project) => String(projectsData.indexOf(project) + 1).padStart(2, '0');
 
-    projectGalleryRows.forEach((imageNumbers) => {
-        const row = document.createElement('div');
-        row.className = 'projects-gallery-row';
+const legacyProjectRouteAliases = {
+    elements: 'watch-diorama',
+    'fractal-study': 'gilded-fractal',
+    'duck-model': 'knife-duck',
+    dewdrops: 'cinematic-rain',
+    'ribbon-study': 'dispersed-glass',
+    'garden-bench': 'kauri-dieback-project',
+    'cat-in-a-bag': 'wheres-my-cat',
+    'living-room': 'music-living-room',
+    giraffe: 'chunky-giraffe',
+    'leaf-study': 'animation-study',
+    'little-house': 'the-start-of-the-journey',
+    cottage: 'cottagecore',
+};
 
-        imageNumbers.forEach((imageNumber) => {
-            const tile = document.createElement('div');
-            tile.className = 'projects-gallery-tile';
+function routeFromHash() {
+    if (!assetsReady) return;
 
-            const img = document.createElement('img');
-            img.src = `/images/image_${imageNumber}.webp`;
-            img.alt = `Project still ${imageNumber}`;
-            tile.appendChild(img);
+    const projectKey = location.hash.match(/^#project-(.+)$/)?.[1];
+    if (projectKey) {
+        const resolvedKey = legacyProjectRouteAliases[projectKey] || projectKey;
+        openProjectDetailPage(projectsData.find((project) => project.key === resolvedKey));
+        return;
+    }
 
-            row.appendChild(tile);
-        });
+    const sceneSlug = location.hash.match(/^#scene-(.+)$/)?.[1];
+    const groupKey = sceneRouteMap[sceneSlug];
+    if (!groupKey) return;
 
-        gallery.appendChild(row);
-    });
+    if (groupKey === galleryGroupKey) {
+        openGalleryFromMenu();
+        return;
+    }
 
-    return gallery;
+    handleInteraction(groupKey);
+
+    // Desktop Room and Elements have a shared establishing shot followed by
+    // their actual detail shot. A direct route should land at the destination,
+    // not stop at that intermediate camera position.
+    if (scenes[groupKey]?.stages.length > 1) {
+        const advanceWhenSettled = () => {
+            if (isAnimatingCamera) {
+                setTimeout(advanceWhenSettled, 50);
+                return;
+            }
+            handleInteraction(groupKey);
+        };
+        setTimeout(advanceWhenSettled, 50);
+    }
 }
 
-// Justified-gallery sizing: for each row, scale every image so they all
-// share one row height and their widths sum to the row's full width - the
-// same math a "justified" photo grid uses (e.g. Flickr's), which is why
-// three squarish images and three wide ones can share a row without any of
-// them stretching, cropping, or leaving gaps. Capped at maxRowHeight so a
-// row with only one or two images (e.g. the full-width ones) doesn't blow up
-// past a sane height on wide viewports.
-const projectsGalleryGap = 16;
-const projectsGalleryMaxRowHeight = 460;
+window.addEventListener('hashchange', () => {
+    if (assetsReady) location.reload();
+});
 
-function layoutProjectsGallery() {
-    const gallery = webpageContent.querySelector('.projects-gallery');
-    if (!gallery) return;
+let projectsDetailViewEl = null;
+// Built fresh per showProjectDetail call and positioned directly inside the
+// full-page panel so it shares that panel's bottom-slide animation.
+let projectsDetailNavEl = null;
 
-    gallery.querySelectorAll('.projects-gallery-row').forEach((row) => {
-        const tiles = Array.from(row.querySelectorAll('.projects-gallery-tile'));
-        const images = tiles.map((tile) => tile.querySelector('img'));
-        if (images.some((img) => !img.naturalWidth)) return;
+function discardProjectDetailInterface() {
+    projectsDetailNavEl?.remove();
+    projectsDetailNavEl = null;
+    projectsDetailViewEl = null;
+    webpageContent.querySelectorAll('#projects-root').forEach((el) => el.remove());
+}
 
-        const ratios = images.map((img) => img.naturalWidth / img.naturalHeight);
-        const rowWidth = row.clientWidth;
+// Rebuilds the detail view from scratch for `project` - simpler than diffing
+// the previous project's markup back out, and this view is never large
+// enough for that to matter. The corner nav strip (bottom-right) lists every
+// project so any one of them is always one click away, same as the
+// reference layout.
+function showProjectDetail(project) {
+    if (!projectsDetailViewEl) return;
 
-        // Below this width, sharing one row height across 2-3 images would
-        // squeeze them illegibly small - stack each at its own full width
-        // instead (still sized by its own ratio, so still uncropped).
-        if (rowWidth < 480) {
-            tiles.forEach((tile, i) => {
-                tile.style.width = '100%';
-                tile.style.height = `${rowWidth / ratios[i]}px`;
+    // Keeps the gallery carousel (see galleryDisplayIndex) in step with
+    // whichever project this page is actually showing - otherwise switching
+    // projects here via the corner nav strip, then backing out to the
+    // gallery (see the "Back to gallery" button), would resurface the
+    // carousel on the project it had before, not the one just viewed.
+    galleryDisplayIndex = projectsData.indexOf(project);
+
+    const renderDetail = () => {
+        projectsDetailViewEl.scrollTop = 0;
+        projectsDetailViewEl.innerHTML = '';
+
+        const info = document.createElement('div');
+        info.className = 'projects-detail-info';
+
+        const back = document.createElement('button');
+        back.type = 'button';
+        back.className = 'projects-detail-back';
+        back.textContent = '‹ Back to gallery';
+        back.addEventListener('click', () => closeWebpage());
+
+        const indexEl = document.createElement('p');
+        indexEl.className = 'projects-detail-index';
+        indexEl.textContent = projectIndexLabel(project);
+
+        const title = document.createElement('h2');
+        title.className = 'projects-detail-title';
+        title.textContent = project.title;
+
+        const desc = document.createElement('p');
+        desc.className = 'projects-detail-desc';
+        desc.textContent = project.description;
+
+        const meta = document.createElement('div');
+        meta.className = 'projects-detail-meta';
+        const metaField = (label, value) => {
+            const field = document.createElement('div');
+            field.className = 'projects-detail-meta-field';
+            const l = document.createElement('p');
+            l.className = 'projects-detail-meta-label';
+            l.textContent = label;
+            const v = document.createElement('p');
+            v.className = 'projects-detail-meta-value';
+            v.textContent = value;
+            field.append(l, v);
+            return field;
+        };
+        meta.appendChild(metaField('INSPIRATION', project.category));
+        meta.appendChild(metaField('MAIN SKILLS', project.role));
+        if (project.date) meta.appendChild(metaField('DATE', project.date));
+
+        info.append(back, indexEl, title, desc, meta);
+
+        if (project.groupKey) {
+            const cta = document.createElement('button');
+            cta.type = 'button';
+            cta.className = 'projects-detail-cta';
+            cta.textContent = 'VIEW IN 3D';
+            // Closes the project page and, once its bottom-slide has settled,
+            // drops straight into this project's actual keycap scene - the
+            // same zoom handleInteraction fires from an ordinary key click.
+            // Opened from inside the gallery diorama, "where it
+            // was" is the gallery itself (see openProjectDetailPage's
+            // isGalleryEntered branch) - a real scene switch, unlike the
+            // plain reopen-the-gallery close below, so this leaves it
+            // properly (exitZoomedScene) before zooming into the new one.
+            cta.addEventListener('click', () => {
+                const cameFromGallery = isGalleryEntered;
+                closeWebpage({ restoreGallery: !cameFromGallery });
+                setTimeout(() => {
+                    if (cameFromGallery) {
+                        exitZoomedScene(() => handleInteraction(project.groupKey));
+                    } else {
+                        handleInteraction(project.groupKey);
+                    }
+                }, 850);
             });
-            return;
+            info.appendChild(cta);
         }
 
-        const totalGap = projectsGalleryGap * (tiles.length - 1);
-        const naturalRowHeight = (rowWidth - totalGap) / ratios.reduce((sum, ratio) => sum + ratio, 0);
-        // A single-image "row" is a full-width banner by design - it should
-        // always reach the row's full width (so its edges line up with the
-        // multi-image rows above/below), so only multi-image rows get
-        // capped to stop them ballooning too tall on wide viewports.
-        const rowHeight = tiles.length === 1
-            ? naturalRowHeight
-            : Math.min(naturalRowHeight, projectsGalleryMaxRowHeight);
+        const media = document.createElement('div');
+        media.className = 'projects-detail-media';
+        const mediaImg = document.createElement('img');
+        mediaImg.src = project.image;
+        mediaImg.alt = project.title;
+        media.appendChild(mediaImg);
 
-        tiles.forEach((tile, i) => {
-            tile.style.width = `${ratios[i] * rowHeight}px`;
-            tile.style.height = `${rowHeight}px`;
+        projectsDetailViewEl.append(info, media);
+
+        projectsDetailNavEl?.remove();
+        const nav = document.createElement('div');
+        nav.className = 'projects-detail-nav';
+        projectsData.forEach((p) => {
+            const thumb = document.createElement('a');
+            thumb.href = `#project-${p.key}`;
+            thumb.className = 'projects-detail-nav-thumb';
+            thumb.classList.toggle('active', p.key === project.key);
+            thumb.setAttribute('aria-label', `View project: ${p.title}`);
+            if (p.key === project.key) thumb.setAttribute('aria-current', 'page');
+            const thumbImg = document.createElement('img');
+            thumbImg.src = p.image;
+            thumbImg.alt = '';
+            thumbImg.loading = 'lazy';
+            const thumbLabel = document.createElement('span');
+            thumbLabel.className = 'projects-detail-nav-label';
+            thumbLabel.textContent = `${projectIndexLabel(p)}  ${p.title}`;
+            thumb.append(thumbImg, thumbLabel);
+            thumb.addEventListener('click', (event) => {
+                event.preventDefault();
+                // showProjectDetail replaces this nav element immediately;
+                // stop here so the detached click target cannot reach the
+                // window-level "outside the page" close handler afterward.
+                event.stopPropagation();
+                if (dragMoved || p.key === project.key) return;
+                history.replaceState(null, '', thumb.hash);
+                showProjectDetail(p);
+            });
+            nav.appendChild(thumb);
         });
-    });
+
+        // Click-and-drag horizontal scroll: overflow-x: auto alone only responds
+        // to a scrollbar drag or a horizontal wheel/trackpad gesture, not a
+        // plain mouse click-and-drag, and the scrollbar itself is hidden (see
+        // style.scss). Mouse-only - touchscreens already pan an overflow-x:auto
+        // strip natively, and layering this on top of that would double-handle
+        // the same gesture.
+        let dragStartX = 0;
+        let dragStartScroll = 0;
+        let dragMoved = false;
+        let dragging = false;
+
+        nav.addEventListener('pointerdown', (event) => {
+            if (event.pointerType !== 'mouse') return;
+            dragging = true;
+            dragMoved = false;
+            dragStartX = event.clientX;
+            dragStartScroll = nav.scrollLeft;
+            nav.classList.add('dragging');
+        });
+
+        nav.addEventListener('pointermove', (event) => {
+            if (!dragging) return;
+            const dx = event.clientX - dragStartX;
+            if (Math.abs(dx) > 4 && !dragMoved) {
+                dragMoved = true;
+                // Capturing only after the drag threshold keeps ordinary
+                // clicks targeted at the project link beneath the pointer.
+                nav.setPointerCapture(event.pointerId);
+            }
+            nav.scrollLeft = dragStartScroll - dx;
+        });
+
+        const endDrag = (event) => {
+            if (nav.hasPointerCapture(event.pointerId)) {
+                nav.releasePointerCapture(event.pointerId);
+            }
+            dragging = false;
+            nav.classList.remove('dragging');
+        };
+        nav.addEventListener('pointerup', endDrag);
+        nav.addEventListener('pointercancel', endDrag);
+
+        // A drag that actually moved the strip shouldn't also register as a
+        // click on whichever thumb the cursor lands on - capture phase so this
+        // runs before that thumb's own (bubble-phase) click listener above.
+        nav.addEventListener('click', (event) => {
+            if (dragMoved) {
+                event.stopPropagation();
+                event.preventDefault();
+            }
+        }, true);
+
+        // Dragging over an <img> would otherwise kick off the browser's native
+        // "drag this image" gesture instead of scrolling the strip.
+        nav.addEventListener('dragstart', (event) => event.preventDefault());
+
+        // Keep the strip outside the detail grid, but inside the full-page
+        // panel. It can stay pinned to that viewport-sized panel while moving
+        // in and out as part of the exact same transform.
+        webpageContent.appendChild(nav);
+        projectsDetailNavEl = nav;
+        // Centre the active item by moving only this horizontal strip.
+        // scrollIntoView() may also scroll transformed ancestors/the viewport,
+        // which makes the full-page entrance appear to jump.
+        const activeThumb = nav.querySelector('.active');
+        if (activeThumb) {
+            nav.scrollLeft = activeThumb.offsetLeft
+                - ((nav.clientWidth - activeThumb.clientWidth) / 2);
+        }
+    };
+
+    renderDetail();
 }
-
-function layoutProjectsGalleryOnceLoaded(gallery) {
-    layoutProjectsGallery();
-
-    gallery.querySelectorAll('img').forEach((img) => {
-        if (img.complete) return;
-        img.addEventListener('load', layoutProjectsGallery, { once: true });
-    });
-}
-
-window.addEventListener('resize', () => {
-    if (webpageContent.querySelector('.projects-gallery')) layoutProjectsGallery();
-});
 
 function openWebpage({ heading, paragraphs } = {}) {
     isWebpageOpen = true;
@@ -1122,6 +1990,9 @@ function openWebpage({ heading, paragraphs } = {}) {
     // fire and rip 'about-mode'/'full-page' back off this freshly-opened
     // page - see closeWebpage.
     clearTimeout(webpageCloseCleanupTimer);
+    discardProjectDetailInterface();
+    webpageContent.classList.remove('full-page');
+    document.body.classList.remove('projects-open');
     webpageContent.style.removeProperty('opacity');
     webpageOverlay.classList.add('open');
     webpageOverlay.classList.remove('about-mode');
@@ -1142,7 +2013,7 @@ function openWebpage({ heading, paragraphs } = {}) {
         ease: 'power2.out',
     });
 
-    // Undo whatever the Projects page (see openProjectsWebpage below) left
+    // Undo whatever the project detail page left
     // behind - it has its own root and doesn't touch #webpage-heading or
     // this paragraph-rebuilding path at all, so this is just cleanup for
     // whenever the panel is reopened via the default 3D zoom-into-key path
@@ -1165,14 +2036,11 @@ function openWebpage({ heading, paragraphs } = {}) {
     webpageRevealTimer = setTimeout(() => webpageContent.classList.add('revealed'), 450);
 }
 
-// The Projects nav link's destination - deliberately built as its own root
-// (#projects-root, injected fresh below) rather than sharing openWebpage's
-// #webpage-heading/paragraph-rebuilding path used by individual project
-// pages: it doesn't have per-project text, just a fixed intro and the image
-// gallery, so it reads as its own page rather than another instance of the
-// drawer template.
-function openProjectsWebpage() {
-    if (isWebpageOpen || isAnimatingCamera) return;
+// Opens the selected project directly in the current full-page detail
+// interface. The legacy Projects index no longer sits underneath it.
+function openProjectDetailPage(project) {
+    if (!project || isWebpageOpen || isAnimatingCamera) return;
+    replaceRouteHash(`#project-${project.key}`);
 
     const open = () => {
         isWebpageOpen = true;
@@ -1180,56 +2048,62 @@ function openProjectsWebpage() {
         // fire and rip 'full-page'/'projects-open' back off this
         // freshly-opened page - see closeWebpage.
         clearTimeout(webpageCloseCleanupTimer);
+        discardProjectDetailInterface();
         webpageContent.style.removeProperty('opacity');
-        webpageOverlay.classList.add('open');
         webpageContent.classList.remove('revealed');
-        webpageContent.classList.add('full-page');
+        webpageContent.classList.add('full-page', 'preparing-project-slide');
         webpageContent.scrollTop = 0;
         controls.enabled = false;
         document.body.classList.add('projects-open');
 
+        // The project page now has one motion only: the panel's bottom-slide.
+        // Keep the camera fixed instead of layering the old drawer's camera
+        // dive underneath it.
         preWebpageCameraPosition.copy(camera.position);
-        const diveTarget = camera.position.clone().lerp(controls.target, 0.14);
         webpageDiveTween?.kill();
-        webpageDiveTween = gsap.to(camera.position, {
-            x: diveTarget.x,
-            y: diveTarget.y,
-            z: diveTarget.z,
-            duration: 1.1,
-            ease: 'power2.out',
-        });
+        webpageDiveTween = null;
 
         // Hide (don't touch the text of) the shared heading and clear any
         // leftover paragraphs from a previous single-project open, then
         // build this page's own root fresh.
         webpageHeading.style.display = 'none';
-        webpageContent.querySelectorAll('p.reveal, #projects-root').forEach((el) => el.remove());
+        webpageContent.querySelectorAll('p.reveal').forEach((el) => el.remove());
 
         const root = document.createElement('div');
         root.id = 'projects-root';
 
-        const heading = document.createElement('h1');
-        heading.id = 'projects-heading';
-        root.appendChild(heading);
-
-        const intro = document.createElement('p');
-        intro.className = 'reveal';
-        intro.textContent = 'A collection of all projects over 5 years...';
-        root.appendChild(intro);
-
-        const galleryEl = buildProjectsGallery();
-        root.appendChild(galleryEl);
+        projectsDetailViewEl = document.createElement('div');
+        projectsDetailViewEl.className = 'projects-detail-view';
+        root.appendChild(projectsDetailViewEl);
 
         webpageContent.appendChild(root);
-        layoutProjectsGalleryOnceLoaded(galleryEl);
+        showProjectDetail(project);
 
-        playTypewriter(heading, 'PROJECTS');
+        // Paint the full-page panel at translateY(100%) with transitions
+        // suppressed. Then arm its vertical transition from that settled
+        // position before .open moves it to zero.
+        void webpageContent.offsetHeight;
+        webpageContent.classList.remove('preparing-project-slide');
+        void webpageContent.offsetHeight;
+        requestAnimationFrame(() => webpageOverlay.classList.add('open'));
+
         clearTimeout(webpageRevealTimer);
-        webpageRevealTimer = setTimeout(() => webpageContent.classList.add('revealed'), 450);
     };
 
-    // Glide back to the overview first if a scene is currently zoomed in,
-    // then open once the camera has actually landed there.
+    // Opened from inside the gallery diorama (see openGalleryProject) - the
+    // camera is already parked somewhere worth staying on, so this opens
+    // right on top of it instead of gliding all the way back out to the
+    // pre-gallery overview first (see closeWebpage's matching restore, and
+    // the "VIEW IN 3D" cta below which does still leave the gallery, just
+    // once it actually needs to jump to a different scene).
+    if (isGalleryEntered) {
+        hideGalleryProjectsDisplay();
+        open();
+        return;
+    }
+
+    // Otherwise, glide back to the overview first if a scene is currently
+    // zoomed in, then open once the camera has actually landed there.
     if (isContactZoomedIn) {
         exitZoomedScene(open);
     } else {
@@ -1237,17 +2111,270 @@ function openProjectsWebpage() {
     }
 }
 
+// Floating project display shown while inside the gallery diorama (see
+// enterGallery/exitZoomedScene above) - a fanned carousel of the same
+// projectsData used by the Projects page, framed like it's sitting on the
+// gallery's round table. Only a window of 5 entries (active +/- 2) is ever
+// in the DOM at once and rebuilt on every step, rather than laying out all
+// of projectsData and translating a track - simpler to keep correct across
+// the wraparound than fighting a single continuous strip.
+let galleryDisplayIndex = 0;
+
+function galleryProjectAt(offset) {
+    const len = projectsData.length;
+    return projectsData[((galleryDisplayIndex + offset) % len + len) % len];
+}
+
+// Opens straight into a project's detail view - shares openProjectDetailPage's
+// own exit-the-gallery-first handling (see isContactZoomedIn there), so a
+// card click reads as one continuous move: out of the diorama, into the page.
+function openGalleryProject(project) {
+    openProjectDetailPage(project);
+}
+
+const GALLERY_SLIDE_MS = 400;
+const GALLERY_SLIDE_DISTANCE = 40;
+const GALLERY_CARD_ENTER_DISTANCE = 60;
+
+// Guards a step's text crossfade against being clobbered by a faster-firing
+// later step (e.g. the user clicking Next twice in quick succession) - only
+// the most recently scheduled swap is allowed to actually apply, so an
+// earlier one landing late can't swap stale text back in.
+let galleryStepToken = 0;
+
+// Cards are kept as persistent DOM nodes, keyed by project.key, and updated
+// in place on every step rather than torn down and rebuilt - that's what
+// lets the FLIP animation below move/resize the *same* element instead of
+// hard-cutting to a freshly built one. distanceClassName below controls
+// their resting size/opacity per slot (see .gallery-projects-card--active/
+// --near/--far in style.scss).
+const galleryCardEls = new Map();
+
+function distanceClassName(distance) {
+    return distance === 0 ? 'active' : distance === 1 ? 'near' : 'far';
+}
+
+function buildGalleryCard(project) {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'gallery-projects-card';
+
+    const img = document.createElement('img');
+    img.src = project.image;
+    img.alt = project.title;
+    img.loading = 'lazy';
+
+    card.append(img);
+    return card;
+}
+
+// Rebuilds the 5-card window (active +/- 2) around the current
+// galleryDisplayIndex. When animate is false (first open) cards just render
+// at rest. When animate is true (stepping), this plays a FLIP transition:
+// cards that persist across the step are moved/resized in place rather than
+// replaced, so the carousel reads as one continuous shuffle - the same
+// "distance-from-active eases together" feel the per-card transitions in
+// style.scss were written for, but which never got to play out while every
+// step wiped and rebuilt the DOM from scratch.
+function renderGalleryProjectsCards(animate, direction) {
+    const offsets = [-2, -1, 0, 1, 2];
+    const windowProjects = offsets.map((offset) => galleryProjectAt(offset));
+    const windowKeys = new Set(windowProjects.map((project) => project.key));
+
+    const oldRects = animate
+        ? new Map([...galleryCardEls].map(([key, el]) => [key, el.getBoundingClientRect()]))
+        : null;
+
+    // Cards that fell out of the window this step: detach them from the flex
+    // flow at their last on-screen spot (so pulling them out doesn't jump
+    // the cards that remain) and let them slide/fade away independently.
+    galleryCardEls.forEach((el, key) => {
+        if (windowKeys.has(key)) return;
+        galleryCardEls.delete(key);
+        if (!animate) { el.remove(); return; }
+
+        const rect = el.getBoundingClientRect();
+        el.style.position = 'fixed';
+        el.style.margin = '0';
+        el.style.left = `${rect.left}px`;
+        el.style.top = `${rect.top}px`;
+        el.style.width = `${rect.width}px`;
+        el.style.height = `${rect.height}px`;
+        el.style.opacity = '0';
+        el.style.transform = `translateX(${direction * GALLERY_CARD_ENTER_DISTANCE}px)`;
+        setTimeout(() => el.remove(), GALLERY_SLIDE_MS);
+    });
+
+    offsets.forEach((offset, i) => {
+        const project = windowProjects[i];
+        const distance = Math.abs(offset);
+        let card = galleryCardEls.get(project.key);
+        const isNew = !card;
+
+        if (isNew) {
+            card = buildGalleryCard(project);
+            galleryCardEls.set(project.key, card);
+        }
+
+        card.className = `gallery-projects-card gallery-projects-card--${distanceClassName(distance)}`;
+        // The active (center) card opens straight into that project; a side
+        // card instead just re-centers the carousel onto it, same as clicking
+        // a non-active thumb in the Projects page's own corner nav.
+        card.onclick = (event) => {
+            event.stopPropagation();
+            if (offset === 0) {
+                openGalleryProject(project);
+            } else {
+                stepGalleryDisplay(offset);
+            }
+        };
+
+        galleryProjectsTrack.appendChild(card);
+
+        if (isNew && animate) {
+            card.style.transition = 'none';
+            card.style.opacity = '0';
+            card.style.transform = `translateX(${direction * GALLERY_CARD_ENTER_DISTANCE}px)`;
+        }
+    });
+
+    if (!animate) return;
+
+    // FLIP: pin every persisted card back to the exact screen position/size
+    // it had before this step (translate + scale, from rect centers so it
+    // works regardless of transform-origin), then release it into the
+    // card's own transition in the same tick - it's why the resize and the
+    // reposition read as one continuous motion instead of two separate ones.
+    galleryCardEls.forEach((el, key) => {
+        const oldRect = oldRects.get(key);
+        if (!oldRect) return;
+
+        const newRect = el.getBoundingClientRect();
+        const dx = (oldRect.left + oldRect.width / 2) - (newRect.left + newRect.width / 2);
+        const dy = (oldRect.top + oldRect.height / 2) - (newRect.top + newRect.height / 2);
+        const scaleX = oldRect.width / newRect.width;
+        const scaleY = oldRect.height / newRect.height;
+        if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 && Math.abs(scaleX - 1) < 0.01 && Math.abs(scaleY - 1) < 0.01) return;
+
+        el.style.transition = 'none';
+        el.style.transform = `translate(${dx}px, ${dy}px) scale(${scaleX}, ${scaleY})`;
+    });
+
+    // Force layout so the instant "from" transforms above are actually
+    // painted before the transition re-enables below - otherwise the browser
+    // coalesces both style changes into one and there's nothing to animate
+    // from.
+    void galleryProjectsTrack.offsetHeight;
+
+    galleryCardEls.forEach((el) => {
+        el.style.transition = '';
+        el.style.transform = '';
+        el.style.opacity = '';
+    });
+}
+
+function renderGalleryProjectsText() {
+    const active = galleryProjectAt(0);
+
+    galleryProjectsTitle.textContent = active.title;
+    galleryProjectsMeta.textContent = active.date || '';
+    galleryProjectsCategoryValue.textContent = active.category;
+    galleryProjectsRoleValue.textContent = active.role;
+    galleryProjectsIndexValue.textContent = `${projectIndexLabel(active)} / ${String(projectsData.length).padStart(2, '0')}`;
+}
+
+function renderGalleryProjectsDisplay() {
+    renderGalleryProjectsText();
+    renderGalleryProjectsCards(false, 1);
+}
+
+function stepGalleryDisplay(delta) {
+    const len = projectsData.length;
+    galleryDisplayIndex = ((galleryDisplayIndex + delta) % len + len) % len;
+
+    const token = ++galleryStepToken;
+    const sign = delta > 0 ? 1 : -1;
+
+    // Cards animate immediately via the FLIP pass above - a continuous
+    // shuffle, not a rebuild, so it doesn't need to wait on the text below.
+    renderGalleryProjectsCards(true, sign);
+
+    // Header/footer text can't be FLIP'd (it's just different words), so it
+    // keeps the old fade-out -> swap -> fade-in pattern: the text only
+    // changes while it's invisible, so the change itself is never seen -
+    // just the fade around it. The nav arrows themselves stay put so they
+    // don't move out from under the cursor mid-click.
+    const textTargets = [galleryProjectsHeader, galleryProjectsFooter];
+
+    textTargets.forEach((el) => {
+        el.style.transition = `transform ${GALLERY_SLIDE_MS}ms ease, opacity ${GALLERY_SLIDE_MS}ms ease`;
+        el.style.transform = `translateX(${-sign * GALLERY_SLIDE_DISTANCE}px)`;
+        el.style.opacity = '0';
+    });
+
+    setTimeout(() => {
+        if (token !== galleryStepToken) return;
+        renderGalleryProjectsText();
+
+        textTargets.forEach((el) => {
+            el.style.transition = 'none';
+            el.style.transform = `translateX(${sign * GALLERY_SLIDE_DISTANCE}px)`;
+        });
+        // Force layout so the instant "from" styles above are actually
+        // painted before the transition re-enables below - otherwise the
+        // browser coalesces both style changes into one and there's nothing
+        // to animate from.
+        void galleryProjectsFooter.offsetHeight;
+        textTargets.forEach((el) => {
+            el.style.transition = `transform ${GALLERY_SLIDE_MS}ms ease, opacity ${GALLERY_SLIDE_MS}ms ease`;
+            el.style.transform = '';
+            el.style.opacity = '';
+        });
+    }, GALLERY_SLIDE_MS);
+}
+
+function showGalleryProjectsDisplay() {
+    galleryProjectsTrack.innerHTML = '';
+    galleryCardEls.clear();
+    renderGalleryProjectsDisplay();
+    galleryProjectsDisplay.classList.add('visible');
+}
+
+function hideGalleryProjectsDisplay() {
+    galleryProjectsDisplay.classList.remove('visible');
+}
+
+galleryProjectsPrevButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    stepGalleryDisplay(-1);
+});
+galleryProjectsNextButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    stepGalleryDisplay(1);
+});
+galleryProjectsOpenButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    openGalleryProject(galleryProjectAt(0));
+});
+
+// The gallery HUD fills the viewport, so any non-control click dismisses it
+// and returns to the free-roam gallery. Buttons/cards keep their own actions.
+galleryProjectsDisplay.addEventListener('click', (event) => {
+    if (event.target.closest('button, a')) return;
+    exitGalleryTable();
+});
+
 // Shared by the "about"/"me" keycaps (see their onArrive above) and the
 // About nav link below - both route into the same page. Unlike every other
 // page (a drawer that slides in over the still-moving scene, via
 // openWebpage's shared camera-dive/slide plumbing), About is a centered card
-// that pops in over a static, blurred backdrop - see .about-mode/.about-page
+// that fades in over a static, blurred backdrop - see .about-mode/.about-page
 // in style.scss - so it gets its own open flow here rather than reusing
 // openWebpage() and patching the result, which fought with it: adding
-// .about-page and .open in the same tick meant the card's pop transition had
-// no closed (scale(0.85)) state to actually animate from, so it interpolated
+// .about-page and .open in the same tick meant the card's fade transition had
+// no closed (opacity: 0) state to actually animate from, so it interpolated
 // straight from the drawer's own translateX(100%) instead - a hybrid
-// slide-then-pop. Forcing a reflow between the two fixes that.
+// slide-then-fade. Forcing a reflow between the two fixes that.
 function openAboutWebpage() {
     isWebpageOpen = true;
     controls.enabled = false;
@@ -1256,6 +2383,9 @@ function openAboutWebpage() {
     // fire and rip 'about-mode'/'about-page' back off this freshly-opened
     // page - see closeWebpage.
     clearTimeout(webpageCloseCleanupTimer);
+    discardProjectDetailInterface();
+    webpageContent.classList.remove('full-page');
+    document.body.classList.remove('projects-open');
     webpageContent.style.removeProperty('opacity');
 
     // Guards against a still-running dive-back tween from whatever page was
@@ -1282,9 +2412,9 @@ function openAboutWebpage() {
     webpageHeading.dataset.text = headingText;
 
     // Flush the styles above - card is now .about-page but not yet .open, so
-    // this paints its closed state (scale(0.85), opacity 0) for a frame
-    // before .open flips it to scale(1) below, giving the transition a real
-    // starting point instead of jumping in from the drawer's own transform.
+    // this paints its closed state (opacity: 0) for a frame before .open
+    // flips it to opacity: 1 below, giving the transition a real starting
+    // point instead of jumping in from the drawer's own transform.
     void webpageContent.offsetWidth;
 
     webpageOverlay.classList.add('open');
@@ -1296,36 +2426,107 @@ function openAboutWebpage() {
 }
 
 // Same entry point as the 3D "about"/"me" keycaps, but reachable straight
-// from the nav without needing to find them on the desk first.
+// from the nav without needing to find them on the desk first - routed
+// through handleInteraction so it plays out identically to actually
+// clicking that keycap (camera flies to it, *then* the page opens via the
+// scene's own onArrive: openAboutWebpage in `scenes` above) instead of just
+// snapping the page open with no camera movement.
 function openAboutWebpageFromMenu() {
     if (isWebpageOpen || isAnimatingCamera) return;
 
     if (isContactZoomedIn) {
-        exitZoomedScene(openAboutWebpage);
+        exitZoomedScene(() => handleInteraction('about'));
     } else {
-        openAboutWebpage();
+        handleInteraction('about');
     }
 }
 
-function closeWebpage() {
+// Same idea as openAboutWebpageFromMenu above, but for the "contact" keycap -
+// no onArrive of its own, so this just flies the camera to it exactly as
+// clicking interact_contact would.
+function openContactFromMenu() {
+    if (isWebpageOpen || isAnimatingCamera) return;
+
+    if (isContactZoomedIn) {
+        exitZoomedScene(() => handleInteraction('contact'));
+    } else {
+        handleInteraction('contact');
+    }
+}
+
+// Same idea as openAboutWebpageFromMenu/openContactFromMenu above, but for
+// "Projects" - flies straight into the key-3 gallery diorama and on through
+// to interact_table (the same two clicks interact_3's keycap, then the table
+// itself, would take) instead of snapping the old flat Projects page open
+// with no camera movement. Individual detail pages are reached through the
+// gallery's active card (see openGalleryProject).
+function openGalleryFromMenu() {
+    if (isWebpageOpen || isAnimatingCamera) return;
+
+    const enter = () => {
+        setSceneRoute(galleryGroupKey);
+        preZoomCameraPosition.copy(camera.position);
+        preZoomCameraTarget.copy(controls.target);
+        isContactZoomedIn = true;
+        zoomedGroupKey = galleryGroupKey;
+        zoomStageIndex = galleryStageIndex;
+        zoomedLiftsMesh = false;
+        enterGallery(enterGalleryTable);
+    };
+
+    if (isContactZoomedIn) {
+        exitZoomedScene(enter);
+    } else {
+        enter();
+    }
+}
+
+// restoreGallery: false skips resurfacing the gallery's floating carousel
+// below - only passed by the "VIEW IN 3D" cta (see showProjectDetail), which
+// is about to leave the gallery itself right after this call and would
+// otherwise flash the carousel back in for a moment first.
+function closeWebpage({ restoreGallery = true } = {}) {
+    const closingProjectDetail = webpageContent.classList.contains('full-page');
+    const restoreGalleryAfterProjectSlide =
+        closingProjectDetail && isGalleryEntered && restoreGallery;
+    if (closingProjectDetail && location.hash.startsWith('#project-')) {
+        replaceRouteHash(isGalleryEntered ? '#scene-gallery' : '');
+    }
+
     isWebpageOpen = false;
     webpageOverlay.classList.remove('open');
     webpageContent.classList.remove('revealed');
     controls.enabled = true;
 
+    // Opened straight on top of the gallery diorama rather than after
+    // leaving it (see openProjectDetailPage's isGalleryEntered branch) - still
+    // zoomed in there underneath the whole time this was open, so closing
+    // just resurfaces its floating carousel instead of exiting any scene.
+    if (isGalleryEntered && restoreGallery && !closingProjectDetail) {
+        showGalleryProjectsDisplay();
+    }
+
     clearTimeout(typewriterTimer);
     clearTimeout(webpageRevealTimer);
     webpageDiveTween?.kill();
-    webpageDiveTween = gsap.to(camera.position, {
-        x: preWebpageCameraPosition.x,
-        y: preWebpageCameraPosition.y,
-        z: preWebpageCameraPosition.z,
-        duration: 0.8,
-        ease: 'power2.inOut',
-    });
+
+    // Project details never move the camera on open, so do not run the old
+    // drawer's camera-return tween on close either. The panel and its
+    // thumbnail strip now leave together on one translateY animation.
+    if (closingProjectDetail) {
+        webpageDiveTween = null;
+    } else {
+        webpageDiveTween = gsap.to(camera.position, {
+            x: preWebpageCameraPosition.x,
+            y: preWebpageCameraPosition.y,
+            z: preWebpageCameraPosition.z,
+            duration: 0.8,
+            ease: 'power2.inOut',
+        });
+    }
 
     // Removing 'open' above already plays each variant's own close animation
-    // (the drawer slides out via its transform, About's card pops back down
+    // (the drawer slides out via its transform, About's card fades back out
     // via its own) - stripping the variant classes themselves has to wait
     // until that's finished, or the panel would snap straight to the plain
     // drawer's geometry/transform mid-transition instead.
@@ -1341,14 +2542,31 @@ function closeWebpage() {
         // right before its slide-out transform even starts - the "trace"
         // sliding off to the side. Pinning opacity at 0 through the swap
         // avoids that; every open function clears this again on its way in.
-        if (webpageContent.classList.contains('about-page')) {
+        if (
+            webpageContent.classList.contains('about-page')
+            || closingProjectDetail
+        ) {
             webpageContent.style.opacity = '0';
         }
 
         webpageOverlay.classList.remove('about-mode');
-        webpageContent.classList.remove('about-page', 'full-page');
+        // A project closes vertically. Suppress transitions while removing
+        // full-page so the shared element cannot then animate toward the
+        // default drawer's translateX(100%) resting state.
+        if (closingProjectDetail) {
+            webpageContent.classList.add('preparing-project-slide');
+            void webpageContent.offsetHeight;
+        }
+        webpageContent.classList.remove('about-page', 'full-page', 'preparing-project-slide');
         document.body.classList.remove('projects-open', 'about-open');
-    }, 600);
+
+        if (closingProjectDetail) {
+            discardProjectDetailInterface();
+            // Keep the scene underneath visually still until the project
+            // panel has completely cleared the viewport.
+            if (restoreGalleryAfterProjectSlide) showGalleryProjectsDisplay();
+        }
+    }, closingProjectDetail ? 650 : 600);
 }
 
 // interact_2's bottom panel - same reveal choreography as openWebpage above,
@@ -1432,7 +2650,7 @@ function buildExplodedWatchCaseStudy(container) {
     cover.className = 'case-study-cover';
     const coverTitle = document.createElement('p');
     coverTitle.className = 'case-study-cover-title';
-    coverTitle.textContent = 'Exploded Watch';
+    coverTitle.textContent = 'Watch Diorama';
     const coverDate = document.createElement('p');
     coverDate.className = 'case-study-cover-date';
     coverDate.textContent = scenes[bottomPanelGroupKey].label.date;
@@ -1492,7 +2710,7 @@ function buildExplodedWatchCaseStudy(container) {
 
     const conceptCopy = document.createElement('p');
     conceptCopy.className = 'case-study-elements-concept';
-    conceptCopy.textContent = "Juxtaposing the intricate rhythm of a watch's mechanical movements with the warmth and vitality of everyday life.";
+    conceptCopy.textContent = 'Using 3D environments to explode a watch and contrast its mechanical structure with the warmth of a miniature cafe and workstation.';
     elements.appendChild(conceptCopy);
 
     // watch_scene4 (the finished watch case, shot square-on) now fills the
@@ -1598,25 +2816,20 @@ window.addEventListener('wheel', (event) => {
         return;
     }
 
-    // The panel was scrolled shut above while still zoomed into its scene -
-    // scrolling back down from here re-opens it (the reverse of scrolling up
-    // to exit) instead of leaving a fresh click on the key as the only way
-    // back in.
-    if (
-        event.deltaY > 0
-        && isContactZoomedIn
-        && zoomedGroupKey === bottomPanelGroupKey
-        && !isAnimatingCamera
-        && !isMenuOpen
-    ) {
-        openInteract2BottomPanel();
-    }
 }, { passive: true });
 
 sceneExitButton.addEventListener('click', (event) => {
     event.stopPropagation();
     if (!isContactZoomedIn) return;
-    exitZoomedScene();
+
+    // The table carousel is one level inside the gallery. Back out to the
+    // free-roam gallery first instead of having the visible X skip straight
+    // past it to the main scene.
+    if (isGalleryTableZoomedIn) {
+        exitGalleryTable();
+    } else {
+        exitZoomedScene();
+    }
 });
 
 webpageCloseButton.addEventListener('click', (event) => {
@@ -1654,8 +2867,9 @@ siteMenuLinks.forEach((link) => {
         event.stopPropagation();
         closeMenu();
 
-        if (link.dataset.menuLink === 'projects') openProjectsWebpage();
+        if (link.dataset.menuLink === 'projects') openGalleryFromMenu();
         if (link.dataset.menuLink === 'about') openAboutWebpageFromMenu();
+        if (link.dataset.menuLink === 'contact') openContactFromMenu();
     });
 });
 
@@ -1681,6 +2895,23 @@ window.addEventListener('keydown', (event) => {
     }
 
     handleInteraction('esc');
+});
+
+// "X" is the gallery's own step-by-step back-out shortcut: the first press
+// backs out of the table's floating carousel to the free-roam diorama (see
+// exitGalleryTable above) without leaving the gallery itself; only once
+// that's done does a second press leave the gallery entirely, via the same
+// exitZoomedScene the #scene-exit button uses. event.repeat is ignored so
+// holding the key down can't fire through both steps off one press.
+window.addEventListener('keydown', (event) => {
+    if (event.key.toLowerCase() !== 'x' || event.repeat) return;
+    if (isWebpageOpen || isMenuOpen || isBottomPanelOpen || isAnimatingCamera) return;
+
+    if (isGalleryTableZoomedIn) {
+        exitGalleryTable();
+    } else if (isGalleryEntered) {
+        exitZoomedScene();
+    }
 });
 
 // No backdrop element behind the dropdown text, so closing on an outside
@@ -1828,32 +3059,31 @@ const render = () => {
     if (activeLabel) {
         sceneLabelTitle.textContent = activeLabel.title;
         sceneLabelDate.textContent = activeLabel.date;
-        sceneLabelClient.textContent = activeLabel.client || '';
     }
     sceneLabel.classList.toggle('visible', !!activeLabel && !isWebpageOpen && !isMenuOpen && !isBottomPanelOpen);
 
     if (!isAnimatingCamera && !isContactZoomedIn) {
         const panOffset = controls.target.clone().sub(panCenter);
 
-        // if (panOffset.length() > maxPanDistance) {
-        //     panOffset.setLength(maxPanDistance);
+        if (panOffset.length() > maxPanDistance) {
+            panOffset.setLength(maxPanDistance);
 
-        //     const clampedTarget = panCenter.clone().add(panOffset);
-        //     const correction = clampedTarget.clone().sub(controls.target);
+            const clampedTarget = panCenter.clone().add(panOffset);
+            const correction = clampedTarget.clone().sub(controls.target);
 
-        //     controls.target.copy(clampedTarget);
-        //     camera.position.add(correction);
-        // }
+            controls.target.copy(clampedTarget);
+            camera.position.add(correction);
+        }
 
-        // camera.position.y = THREE.MathUtils.clamp(camera.position.y, minPanY, maxPanY);
+        camera.position.y = THREE.MathUtils.clamp(camera.position.y, minPanY, maxPanY);
     }
 
     // The 3D scene sits behind every overlay (webpage panel, Projects page,
-    // bottom panel, menu) but pointermove is a window-level listener, so the
-    // raycaster would otherwise keep hovering/popping/sounding props right
-    // underneath whatever's actually covering the screen. Suspend hover
-    // detection entirely while any of those are open instead.
-    const isSceneObscured = isWebpageOpen || isBottomPanelOpen || isMenuOpen;
+    // bottom panel, menu, enter gate) but pointermove is a window-level
+    // listener, so the raycaster would otherwise keep hovering/popping/sounding
+    // props right underneath whatever's actually covering the screen. Suspend
+    // hover detection entirely while any of those are open instead.
+    const isSceneObscured = isWebpageOpen || isBottomPanelOpen || isMenuOpen || isEnterGateOpen;
 
     if (isSceneObscured) {
         hoveredMesh = null;
@@ -1873,7 +3103,14 @@ const render = () => {
             : interactiveMeshes;
         const intersections = raycaster.intersectObjects(raycastableMeshes);
         hoveredMesh = intersections.length > 0 ? intersections[0].object : null;
-        canvas.style.cursor = hoveredMesh ? 'pointer' : 'default';
+
+        // Sticker placement (see placeSticker) only applies in the plain
+        // overview, on the bare desk/floor itself - crosshair hints that a
+        // click there does something even though it's not an interactive key.
+        const isHoveringStickerSurface = !hoveredMesh
+            && !isContactZoomedIn
+            && raycastStickerTargetHit() !== null;
+        canvas.style.cursor = hoveredMesh ? 'pointer' : (isHoveringStickerSurface ? 'crosshair' : 'default');
 
         // Fires once per hover (on the group changing), not every frame the
         // pointer sits still over the same prop, and only for the whitelisted
@@ -1915,6 +3152,7 @@ const render = () => {
         mesh.position.lerp(targetPosition, 0.35);
     });
 
+    updateGalleryTableHintPosition();
     renderer.render(scene, camera);
     window.requestAnimationFrame(render);
 };
@@ -1925,7 +3163,7 @@ window.__testHooks = {
     handleInteraction,
     camera,
     controls,
-    state: () => ({ isContactZoomedIn, zoomedGroupKey, zoomStageIndex, isAnimatingCamera, isExitingToOverview, zoomedFreeCamera }),
+    state: () => ({ isContactZoomedIn, zoomedGroupKey, zoomStageIndex, isAnimatingCamera, isExitingToOverview, zoomedFreeCamera, isGalleryEntered }),
     waveActiveGroupKeys: () => Array.from(waveActiveGroupKeys),
     groupScale: (groupKey) => {
         const mesh = interactiveMeshes.find((m) => m.userData.groupKey === groupKey);
@@ -1949,4 +3187,14 @@ window.__testHooks = {
         const box = new THREE.Box3().setFromObject(campgroundGroup);
         return { min: box.min.toArray(), max: box.max.toArray() };
     },
+    galleryGroup: () => galleryGroup,
+    galleryBox: () => {
+        if (!galleryGroup) return null;
+        const box = new THREE.Box3().setFromObject(galleryGroup);
+        return { min: box.min.toArray(), max: box.max.toArray() };
+    },
+    mainModelGroup: () => mainModelGroup,
+    showGalleryProjectsDisplay,
+    hideGalleryProjectsDisplay,
+    stepGalleryDisplay,
 };

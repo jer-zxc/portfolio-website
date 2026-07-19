@@ -12,6 +12,15 @@ dist
 dist-ssr
 *.local
 
+# Temp scratch dirs
+.tmp_video_close/
+.tmp_video_frames/
+.tmp_video_frames_2/
+.tmp_video_open/
+
+# Claude Code session lock
+.claude/scheduled_tasks.lock
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

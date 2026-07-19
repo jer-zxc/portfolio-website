@@ -1,11 +1,40 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="startup-loading">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>final-portfolio-website</title>
+    <style>
+      /* Prevent raw, unstyled markup flashing before Vite injects the main
+         stylesheet. main.js removes this startup guard as soon as its CSS
+         import and application module have initialized. */
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #15130f;
+      }
 
+      html.startup-loading body > *:not(#loading-screen) {
+        display: none !important;
+      }
+
+      html.startup-loading #loading-screen {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        display: block;
+        visibility: visible;
+        background: #15130f;
+      }
+
+      /* Keep even the loader's raw text hidden until its proper typography
+         and layout have been painted. */
+      html.startup-loading #loading-screen > * {
+        visibility: hidden;
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>
@@ -17,6 +46,30 @@
           <div class="loading-bar-fill" id="loading-bar-fill"></div>
         </div>
         <div class="loading-percent" id="loading-percent">0%</div>
+      </div>
+    </div>
+
+    <div id="enter-gate">
+      <div class="enter-gate-grid"></div>
+      <div class="enter-gate-wash" aria-hidden="true"></div>
+      <div class="enter-gate-frame"></div>
+
+      <div class="enter-gate-date">2026</div>
+      <div class="enter-gate-name">J. Zhixin Chen</div>
+
+      <div class="enter-gate-graphic-group" aria-hidden="true">
+        <div class="enter-gate-graphic enter-gate-graphic--earth"></div>
+        <div class="enter-gate-graphic enter-gate-graphic--eye"></div>
+        <div class="enter-gate-graphic enter-gate-graphic--clock"></div>
+        <div class="enter-gate-graphic enter-gate-graphic--eyeclock"></div>
+      </div>
+
+      <button type="button" class="enter-gate-side enter-gate-side--left" id="enter-gate-enter">Enter</button>
+      <button type="button" class="enter-gate-side enter-gate-side--right" id="enter-gate-portfolio">Portfolio</button>
+
+      <div class="enter-gate-footer">
+        <button type="button" class="enter-gate-mute" id="enter-gate-mute">enter without music</button>
+        <div class="enter-gate-hint">Use left/right click and mouse wheel to navigate</div>
       </div>
     </div>
 
@@ -50,15 +103,19 @@
     </div>
 
     <div id="webpage-overlay">
-      <div class="about-backdrop">
-        <div class="about-breadcrumb">About me</div>
-        <div class="about-corner-mark"></div>
-      </div>
+      <div class="about-backdrop"></div>
       <div class="webpage-content">
+        <div class="about-glow"></div>
+        <div class="about-grid"></div>
+        <div class="about-frame"></div>
         <span id="about-signature" class="about-signature">zxc's</span>
         <h1 id="webpage-heading" data-text="01  Project One">01  Project One</h1>
-        <p class="reveal">Placeholder content — replace with real project details.</p>
-        <p class="reveal">Click outside the panel to return to the scene.</p>
+        <div class="about-corner-graphic-group" aria-hidden="true">
+          <div class="about-corner-graphic about-corner-graphic--earth"></div>
+          <div class="about-corner-graphic about-corner-graphic--eye"></div>
+          <div class="about-corner-graphic about-corner-graphic--clock"></div>
+          <div class="about-corner-graphic about-corner-graphic--eyeclock"></div>
+        </div>
       </div>
     </div>
 
@@ -70,7 +127,7 @@
 
     <div id="bottom-panel-overlay">
       <div class="bottom-panel-content">
-        <h2 id="bottom-panel-heading" data-text="Elements">Elements</h2>
+        <h2 id="bottom-panel-heading" data-text="Watch Diorama">Watch Diorama</h2>
       </div>
     </div>
 
@@ -81,6 +138,43 @@
         <span id="scene-label-date" class="scene-label-date"></span>
         <span id="scene-label-client" class="scene-label-client"></span>
       </span>
+    </div>
+
+    <div id="gallery-table-hint" aria-hidden="true">
+      <span class="gallery-table-hint-copy">
+        <span class="gallery-table-hint-action">click table to view projects</span>
+      </span>
+      <span class="gallery-table-hint-line"></span>
+    </div>
+
+    <div id="gallery-projects-display" aria-hidden="true">
+      <div class="gallery-projects-header">
+        <span class="gallery-projects-eyebrow">Projects</span>
+        <h2 class="gallery-projects-title" id="gallery-projects-title"></h2>
+        <span class="gallery-projects-meta" id="gallery-projects-meta"></span>
+      </div>
+
+      <div class="gallery-projects-stage">
+        <button type="button" class="gallery-projects-nav gallery-projects-nav--prev" id="gallery-projects-prev" aria-label="Previous project">&#8249;</button>
+        <div class="gallery-projects-track" id="gallery-projects-track"></div>
+        <button type="button" class="gallery-projects-nav gallery-projects-nav--next" id="gallery-projects-next" aria-label="Next project">&#8250;</button>
+      </div>
+
+      <div class="gallery-projects-footer">
+        <div class="gallery-projects-field">
+          <span class="gallery-projects-field-label">Inspiration</span>
+          <span class="gallery-projects-field-value" id="gallery-projects-category"></span>
+        </div>
+        <div class="gallery-projects-field">
+          <span class="gallery-projects-field-label">Main Skills</span>
+          <span class="gallery-projects-field-value" id="gallery-projects-role"></span>
+        </div>
+        <div class="gallery-projects-field">
+          <span class="gallery-projects-field-label">Index</span>
+          <span class="gallery-projects-field-value" id="gallery-projects-index"></span>
+        </div>
+        <button type="button" class="gallery-projects-open" id="gallery-projects-open">View Project</button>
+      </div>
     </div>
 
     <button id="scene-exit" class="open" aria-label="Leave scene">

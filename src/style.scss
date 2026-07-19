@@ -95,6 +95,275 @@
     }
   }
 
+  // Enter gate — shown once the loading screen finishes (see
+  // loadingManager.onLoad in main.js), before the intro wave plays. Reuses
+  // the switching-scenes grid/frame language so it reads as the same site
+  // rather than a bolted-on splash, and centers element_4.webp (the same
+  // eye-clock composite used for the switching-scenes icons) as the
+  // signature image. Dismissed via #enter-gate-enter/#enter-gate-portfolio/
+  // #enter-gate-mute, all wired in main.js.
+
+  #enter-gate {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    overflow: hidden;
+    background: vars.$color-loading-bg;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.6s ease, visibility 0.6s ease;
+    // Defined here (rather than on .enter-gate-graphic-group alone) so
+    // .enter-gate-side can also read it below - tying the ENTER/PORTFOLIO
+    // position to the same variable the graphic cluster scales by is what
+    // keeps a guaranteed gap between them at every viewport width, instead
+    // of the two scaling independently and colliding in the middle of the
+    // size range (see the plain clamp()s this replaced).
+    --enter-gate-size: clamp(230px, 27vw, 400px);
+
+    &.visible {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+
+    // Set together with .visible only on the very first appearance (see
+    // loadingManager.onLoad in main.js) so that first show is instant - no
+    // fade-in - while a later dismiss (removing .visible on its own) still
+    // plays the opacity transition above.
+    &.no-transition {
+      transition: none;
+    }
+
+    // Soft ambient wash behind the grid/frame - oversized and centered so
+    // its irregular ink-blob edges (element_5.webp) never show a hard
+    // rectangular border, blended with the dark background rather than
+    // sitting on top of it like a sticker.
+    
+
+    .enter-gate-date,
+    .enter-gate-name {
+      position: absolute;
+      // Same top offset for both - they sit on one shared header row rather
+      // than the date floating higher than the name.
+      top: calc(#{vars.$switching-frame-inset} + 2.6rem);
+      font-family: "Courier New", ui-monospace, monospace;
+      font-size: 0.8rem;
+      letter-spacing: 0.06em;
+      color: rgba(vars.$color-cream, 0.75);
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    }
+
+    .enter-gate-date {
+      left: calc(#{vars.$switching-frame-inset} + 2.6rem);
+      font-weight: 600;
+    }
+
+    .enter-gate-name {
+      left: 50%;
+      transform: translateX(-50%);
+      font-weight: 600;
+    }
+
+    // The same four circular composites the switching-scenes icons use (see
+    // .switching-scenes-icon below in this file), scattered around one shared
+    // center rather than a single centered graphic - matches the reference's
+    // cluster of mostly-separate, only lightly-overlapping circles: earth
+    // peeking in up-left, eye large down-left, the plain clock off to the
+    // right, and the main eye-clock dead center on top of all three. Every
+    // offset below is a fraction of --enter-gate-size, so the whole cluster
+    // (and the gap between layers) scales together at any viewport width.
+    .enter-gate-graphic-group {
+      position: absolute;
+      top: 48%;
+      left: 50%;
+      // --enter-gate-size is inherited from #enter-gate above.
+    }
+
+    .enter-gate-graphic {
+      position: absolute;
+      top: 0;
+      left: 0;
+      border-radius: 50%;
+      background-position: center;
+      background-repeat: no-repeat;
+      // The element_*.webp source art carries a transparent margin around
+      // the circle - scale past 100% so the circle itself reaches the div's
+      // edge instead of leaving a halo ring (same as .switching-scenes-icon).
+      background-size: 114%;
+    }
+
+    // Faintest - just a hint peeking above the main graphic.
+    .enter-gate-graphic--earth {
+      width: calc(var(--enter-gate-size) * 0.9);
+      height: calc(var(--enter-gate-size) * 0.9);
+      background-image: url("/images/element_1.webp");
+      opacity: 1;
+      transform: translate(
+        calc(-50% - var(--enter-gate-size) * 0.0),
+        calc(-50% - var(--enter-gate-size) * 0.38)
+      );
+    }
+
+    // Same size as earth/clock - a sliver tucked behind the main graphic's
+    // bottom-left.
+    .enter-gate-graphic--eye {
+      width: calc(var(--enter-gate-size) * 0.9);
+      height: calc(var(--enter-gate-size) * 0.9);
+      background-image: url("/images/element_2.webp");
+      opacity: 0.38;
+      transform: translate(
+        calc(-50% - var(--enter-gate-size) * 0.38),
+        calc(-50% + var(--enter-gate-size) * 0.3)
+      );
+    }
+
+    // Same size as earth/eye, peeking out to the right.
+    .enter-gate-graphic--clock {
+      width: calc(var(--enter-gate-size) * 0.9);
+      height: calc(var(--enter-gate-size) * 0.9);
+      background-image: url("/images/element_3.webp");
+      opacity: 0.42;
+      transform: translate(
+        calc(-50% + var(--enter-gate-size) * 0.38),
+        calc(-50% + var(--enter-gate-size) * 0.3)
+      );
+    }
+
+    // Dead center, largest and dominant, on top of all three - the only
+    // layer that pulses.
+    .enter-gate-graphic--eyeclock {
+      width: var(--enter-gate-size);
+      height: var(--enter-gate-size);
+      background-image: url("/images/element_4.webp");
+      opacity: 0.95;
+      animation: enter-gate-breathe 6s ease-in-out infinite;
+    }
+
+    .enter-gate-side {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      border: none;
+      background: none;
+      padding: 0;
+      font-family: "Montserrat", sans-serif;
+      font-weight: 600;
+      font-size: clamp(0.9rem, 1.3vw, 1.1rem);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: vars.$color-cream;
+      cursor: pointer;
+      transition: color 0.25s ease;
+
+      &:hover {
+        color: vars.$color-hover-blue;
+      }
+    }
+
+    .enter-gate-wash {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 100vw;
+      height: 50vw;
+      transform: translate(-50%, -50%);
+      background-image: url("/images/element_5.webp");
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      opacity: 0.7;
+      mix-blend-mode: screen;
+    }
+
+    .enter-gate-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(vars.$color-cream, 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(vars.$color-cream, 0.06) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    .enter-gate-frame {
+      position: absolute;
+      inset: vars.$switching-frame-inset;
+      border: 1px solid rgba(vars.$color-cream, 0.85);
+    }
+
+    .enter-gate-side--left {
+      left: clamp(140px, 21vw, 320px);
+    }
+
+    .enter-gate-side--right {
+      right: clamp(140px, 21vw, 320px);
+    }
+
+    .enter-gate-footer {
+      position: absolute;
+      left: 50%;
+      bottom: calc(#{vars.$switching-frame-inset} + 1.6rem);
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .enter-gate-mute {
+      border: none;
+      background: none;
+      padding: 0;
+      font-family: "Montserrat", sans-serif;
+      font-size: 0.8rem;
+      letter-spacing: 0.03em;
+      color: rgba(vars.$color-cream, 0.55);
+      cursor: pointer;
+      transition: color 0.25s ease;
+
+      &:hover {
+        color: rgba(vars.$color-cream, 0.9);
+      }
+    }
+
+    .enter-gate-hint {
+      font-family: "Courier New", ui-monospace, monospace;
+      font-size: 0.7rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: rgba(vars.$color-cream, 0.4);
+    }
+
+    // Below ~640px the side labels would either collide with the frame's own
+    // inset or sit awkwardly close to the graphic — drop them into a row
+    // under it instead, alongside the footer.
+    @media (max-width: 640px) {
+      .enter-gate-graphic-group {
+        top: 38%;
+        --enter-gate-size: clamp(160px, 42vw, 240px);
+      }
+
+      .enter-gate-side {
+        top: auto;
+        bottom: calc(#{vars.$switching-frame-inset} + 5.5rem);
+        transform: none;
+      }
+
+      .enter-gate-side--left {
+        left: calc(#{vars.$switching-frame-inset} + 1.25rem);
+      }
+
+      .enter-gate-side--right {
+        right: calc(#{vars.$switching-frame-inset} + 1.25rem);
+      }
+    }
+  }
+
+  @keyframes enter-gate-breathe {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.035); }
+  }
+
   // experience
 
   #experience {
@@ -124,17 +393,41 @@
     pointer-events: none;
 
     .interaction-counter-value {
+      display: inline-block;
       font-family: "Courier New", ui-monospace, monospace;
       font-size: 1rem;
       letter-spacing: 0.03em;
       font-variant-numeric: tabular-nums;
       color: vars.$color-cream;
       text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+
+      // Toggled on in main.js once every interaction has been found (see
+      // bonusStickerAvailable) - a one-shot bounce plus a looping red glow
+      // so the 12/12 moment actually reads as "done".
+      &.complete {
+        color: #ff4d4d;
+        animation:
+          interaction-counter-bounce 0.5s ease,
+          interaction-counter-glow 1.6s ease-in-out infinite 0.5s;
+      }
     }
   }
 
-  // The tally makes no sense while the Projects page (its own page - see
-  // openProjectsWebpage in main.js, which sets this body class) covers the
+  @keyframes interaction-counter-bounce {
+    0% { transform: scale(1); }
+    30% { transform: scale(1.6); }
+    55% { transform: scale(0.9); }
+    75% { transform: scale(1.2); }
+    100% { transform: scale(1); }
+  }
+
+  @keyframes interaction-counter-glow {
+    0%, 100% { text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6), 0 0 6px rgba(255, 77, 77, 0.6); }
+    50% { text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6), 0 0 16px rgba(255, 77, 77, 1); }
+  }
+
+  // The tally makes no sense while a project detail page (see
+  // openProjectDetailPage in main.js, which sets this body class) covers the
   // scene - toggled via a body class rather than the usual #webpage-overlay.open
   // sibling-selector trick since #interaction-counter isn't a sibling of it.
   body.projects-open #interaction-counter {
@@ -280,6 +573,7 @@
     position: fixed;
     inset: 0;
     z-index: 10;
+    overflow: hidden;
     pointer-events: none;
 
     &.open {
@@ -308,74 +602,38 @@
       transform: translateX(0);
     }
 
-    // Full-page variant — used for the Projects index's own root (#projects-root,
-    // built by openProjectsWebpage in main.js) instead of the narrow side
-    // drawer used for individual project pages. The panel background fills
-    // the entire viewport width (left/right both set, rather than just the
-    // base rule's `right: 0`), but the heading/copy/gallery each stay capped
-    // and centered within it, so the page reads as one wide canvas with a
-    // deliberate column of content down the middle rather than edge-to-edge
-    // text or images.
+    // Full-page variant used by the current project detail interface. The
+    // panel fills the viewport and slides vertically rather than inheriting
+    // the base webpage drawer's right-edge motion.
     .webpage-content.full-page {
+      --project-switch-duration: 0.42s;
+      --project-switch-easing: cubic-bezier(0.22, 0.61, 0.36, 1);
       left: 0;
       right: 0;
       width: 100vw;
-      padding: 6rem 3rem 4rem;
-
-      #projects-heading,
-      p.reveal {
-        max-width: 640px;
-        margin-left: auto;
-        margin-right: auto;
-      }
-
-      .projects-gallery {
-        max-width: 900px;
-        margin: 2rem auto 0;
-      }
-    }
-
-    // Mosaic of project stills on the Projects index - grouped into rows in
-    // main.js (buildProjectsGallery), same reading order as the reference
-    // layout. Every tile's actual width/height is set inline by
-    // layoutProjectsGallery in main.js once each row's images are loaded,
-    // scaling them to a shared row height by their *real* aspect ratio
-    // (they're all different sizes) so nothing gets stretched or cropped -
-    // this stylesheet just supplies the row/gap scaffolding around that.
-    .projects-gallery {
-      display: flex;
-      flex-direction: column;
-      gap: 1rem;
-      transition-delay: 0.22s;
-    }
-
-    .projects-gallery-row {
-      display: flex;
-      gap: 1rem;
-      justify-content: center;
-
-      // Until layoutProjectsGallery sets explicit pixel sizes (briefly, on
-      // first paint before images report their natural dimensions), wrap
-      // rather than let a 3-image row overflow the panel.
-      flex-wrap: wrap;
-    }
-
-    .projects-gallery-tile {
-      border-radius: 4px;
+      padding: clamp(4.5rem, 7vh, 6rem) clamp(1.25rem, 3vw, 3rem) 1.5rem;
+      box-shadow: 0 -20px 70px rgba(0, 0, 0, 0.45);
+      transform: translate3d(0, calc(100% + 1px), 0);
+      transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+      will-change: transform;
+      backface-visibility: hidden;
+      // The project detail page is designed to always fit the viewport.
       overflow: hidden;
-      background: rgba(255, 255, 255, 0.02);
-      flex-shrink: 0;
-
-      img {
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
-        display: block;
-      }
     }
 
-    #webpage-heading,
-    #projects-heading {
+    // Adding .full-page changes the shared drawer's resting transform from
+    // translateX(100%) to translateY(100%). Suppress that setup change so it
+    // cannot become a stray horizontal animation before the real bottom-up
+    // entrance begins.
+    .webpage-content.full-page.preparing-project-slide {
+      transition: none;
+    }
+
+    &.open .webpage-content.full-page {
+      transform: translate3d(0, 0, 0);
+    }
+
+    #webpage-heading {
       font-family: "TT Commons Pro", "Montserrat", sans-serif;
       font-weight: 700;
       font-size: clamp(1.6rem, 6vw, 2.1rem);
@@ -394,12 +652,307 @@
       }
     }
 
-    // "PROJECTS" is typed out literally in caps (see openProjectsWebpage in
-    // main.js), but transform is set here too as a safety net, plus a touch
-    // of letter-spacing so all-caps reads as a page title, not just louder text.
-    #projects-heading {
-      letter-spacing: 0.04em;
+    // Project detail view: an index/title/description/meta column
+    // on the left, a large hero image on the right, and a corner strip
+    // (bottom-right, position: absolute - see .projects-detail-nav below) to
+    // jump straight to any other project. align-items is left at its
+    // default (stretch) rather than center so both columns share the grid
+    // row's own height - .projects-detail-media below relies on that to
+    // size itself without forcing the page to grow past the viewport.
+    .projects-detail-view {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(250px, 24rem) minmax(0, 1fr);
+      align-items: center;
+      gap: clamp(2rem, 5vw, 6rem);
+      width: min(100%, 100rem);
+      height: calc(100vh - clamp(4.5rem, 7vh, 6rem) - 9.5rem);
+      min-height: 28rem;
+      margin: 0 auto;
+
+      @media (max-width: 760px) {
+        grid-template-columns: 1fr;
+        align-items: start;
+        height: auto;
+        min-height: 0;
+      }
+    }
+
+    .projects-detail-info {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 0;
+      padding-bottom: 1rem;
+      animation:
+        project-detail-info-in
+        var(--project-switch-duration)
+        var(--project-switch-easing)
+        both;
+    }
+
+    .projects-detail-back {
+      display: inline-block;
+      margin-bottom: 2rem;
+      border: none;
+      background: none;
+      padding: 0;
+      font-family: "Courier New", ui-monospace, monospace;
+      font-size: 0.85rem;
+      letter-spacing: 0.02em;
+      color: rgba(vars.$color-cream, 0.6);
+      cursor: pointer;
+      transition: color 0.2s ease;
+
+      &:hover {
+        color: vars.$color-cream;
+      }
+    }
+
+    .projects-detail-index {
+      margin: 0 0 0.5rem;
+      font-family: "Courier New", ui-monospace, monospace;
+      font-size: 0.85rem;
+      letter-spacing: 0.05em;
+      color: rgba(vars.$color-cream, 0.5);
+    }
+
+    .projects-detail-title {
+      margin: 0 0 1rem;
+      font-family: "TT Commons Pro", "Montserrat", sans-serif;
+      font-weight: 700;
+      font-size: clamp(2.2rem, 5vw, 3.6rem);
+      line-height: 1.05;
+      color: vars.$color-cream;
+    }
+
+    .projects-detail-desc {
+      max-width: 34ch;
+      margin: 0 0 1.75rem;
+      line-height: 1.6;
+      color: rgba(vars.$color-cream, 0.75);
+    }
+
+    .projects-detail-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.5rem 2.5rem;
+      padding-top: 1.25rem;
+      margin-bottom: 2rem;
+      border-top: 1px solid rgba(vars.$color-cream, 0.15);
+    }
+
+    .projects-detail-meta-label {
+      margin: 0 0 0.35rem;
+      font-size: 0.7rem;
+      letter-spacing: 0.06em;
       text-transform: uppercase;
+      color: rgba(vars.$color-cream, 0.45);
+    }
+
+    .projects-detail-meta-value {
+      margin: 0;
+      font-size: 0.85rem;
+      line-height: 1.4;
+      color: vars.$color-cream;
+    }
+
+    .projects-detail-cta {
+      display: inline-block;
+      padding: 0.7rem 1.4rem;
+      border: 1px solid rgba(vars.$color-cream, 0.5);
+      background: none;
+      font-family: "Courier New", ui-monospace, monospace;
+      font-size: 0.8rem;
+      letter-spacing: 0.05em;
+      color: vars.$color-cream;
+      cursor: pointer;
+      transition: background 0.2s ease, color 0.2s ease;
+
+      &:hover {
+        background: vars.$color-cream;
+        color: vars.$color-overlay-bg;
+      }
+    }
+
+    // Stretches to the grid row's own height (see .projects-detail-view
+    // above) rather than a fixed aspect-ratio box, so it can never force the
+    // page taller than the viewport. The image itself uses object-fit:
+    // contain (not cover) so it's shown at its own aspect ratio, uncropped -
+    // centered within this box instead of cropped. No background fill
+    // behind it either - a tinted box was reading as its own empty "frame"
+    // around any image that doesn't fill the box exactly.
+    .projects-detail-media {
+      width: 94%;
+      height: calc(100% - 1.5rem);
+      min-height: 0;
+      max-height: 64vh;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      justify-self: center;
+      transform: translateY(clamp(0.75rem, 2vh, 1.5rem));
+      background: transparent;
+      border: none;
+      animation:
+        project-detail-media-in
+        var(--project-switch-duration)
+        var(--project-switch-easing)
+        both;
+
+      img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+      }
+
+      @media (max-width: 760px) {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 16 / 10;
+        transform: none;
+      }
+    }
+
+    // Corner strip of every other project. It is positioned directly inside
+    // the full-page panel so it travels with the same bottom-slide instead
+    // of popping in or out as a separate fixed layer.
+    .projects-detail-nav {
+      position: absolute;
+      right: clamp(1.25rem, 3vw, 3rem);
+      bottom: 1rem;
+      z-index: 5;
+      display: flex;
+      gap: 0.6rem;
+      max-width: min(calc(100vw - 2.5rem), 29rem);
+      overflow-x: auto;
+      padding: 0.25rem;
+      scrollbar-width: none;
+      cursor: grab;
+      // Otherwise dragging across the thumbnails selects their surrounding
+      // text/whitespace like a click-drag text selection instead of just
+      // panning the strip.
+      user-select: none;
+
+      &.dragging {
+        cursor: grabbing;
+      }
+
+      &::-webkit-scrollbar {
+        display: none;
+      }
+    }
+
+    .projects-detail-nav-thumb {
+      flex: 0 0 auto;
+      position: relative;
+      width: 5rem;
+      height: 5rem;
+      padding: 0;
+      border: 1px solid transparent;
+      overflow: hidden;
+      background: #111;
+      opacity: 0.55;
+      cursor: pointer;
+      transform: translateX(0);
+      transition:
+        opacity 0.2s ease,
+        border-color 0.2s ease,
+        filter 0.2s ease;
+      color: vars.$color-cream;
+      text-decoration: none;
+      animation:
+        project-detail-thumb-in
+        var(--project-switch-duration)
+        var(--project-switch-easing)
+        both;
+
+      img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+        // Otherwise the drag-to-scroll gesture (see main.js) can start a
+        // native "drag this image" instead of panning the strip - clicks
+        // still resolve to the button underneath either way.
+        pointer-events: none;
+      }
+
+      &:hover {
+        opacity: 1;
+        filter: brightness(1.08);
+      }
+
+      &.active {
+        opacity: 1;
+        border-color: rgba(vars.$color-cream, 0.85);
+        filter: brightness(1.05);
+      }
+    }
+
+    .projects-detail-nav-label {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      overflow: hidden;
+      padding: 1.25rem 0.45rem 0.4rem;
+      background: linear-gradient(transparent, rgba(0, 0, 0, 0.9));
+      font-family: "Courier New", ui-monospace, monospace;
+      font-size: 0.58rem;
+      line-height: 1.2;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    @keyframes project-detail-info-in {
+      from {
+        opacity: 0;
+        transform: translateX(-12px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    @keyframes project-detail-media-in {
+      from {
+        opacity: 0;
+        transform: translateX(18px) translateY(clamp(0.75rem, 2vh, 1.5rem));
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0) translateY(clamp(0.75rem, 2vh, 1.5rem));
+      }
+    }
+
+    @keyframes project-detail-thumb-in {
+      from {
+        opacity: 0;
+        transform: translateX(12px);
+      }
+      to {
+        transform: translateX(0);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .projects-detail-info,
+      .projects-detail-media,
+      .projects-detail-nav-thumb {
+        animation: none;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .webpage-content.full-page {
+        overflow-y: auto;
+        padding-bottom: 8.5rem;
+      }
     }
 
     p.reveal {
@@ -423,14 +976,17 @@
       }
     }
 
-    // About page — a centered card that pops out over the live 3D scene
+    // About page — a centered card that fades in over the live 3D scene
     // (rather than the right-edge drawer every other page uses), toggled via
     // #webpage-overlay.about-mode + .webpage-content.about-page (see
     // openAboutWebpage in main.js). .about-backdrop just softens the scene
     // behind the card with a blur (no darkening tint - the scene stays at
-    // its own natural brightness) plus the corner chrome - the grid pattern
-    // itself lives on the card (see .webpage-content.about-page below), not
-    // spread across the whole backdrop.
+    // its own natural brightness). The card carries its own chrome - glow,
+    // grid, inset frame - as stacked child layers (.about-glow/.about-grid/
+    // .about-frame below) so they clip to its edges like everything else on
+    // it (sharp corners, same as #enter-gate's own frame); the corner
+    // graphic bleeds outside that clip on
+    // purpose, so it's a sibling of the card instead of a child of it.
 
     .about-backdrop {
       position: absolute;
@@ -446,39 +1002,100 @@
       opacity: 1;
     }
 
-    // Sits in the margin band between the viewport edge and the card's own
-    // outer edge (the card is inset by $about-outer-inset below) - not on
-    // the card itself, so it reads as a page-level label rather than part of
-    // the card's own content.
-    .about-breadcrumb {
-      position: absolute;
-      top: 1.6rem;
-      left: 1.9rem;
-      font-size: 0.85rem;
-      letter-spacing: 0.02em;
-      color: rgba(vars.$color-cream, 0.55);
-      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
-    }
-
-    .about-corner-mark {
-      position: absolute;
-      right: 2rem;
-      bottom: 2.1rem;
-      width: 2.4rem;
-      height: 1px;
-      background: rgba(vars.$color-cream, 0.5);
+    // Always present in the DOM (see index.html) so main.js doesn't need to
+    // build them per open - just hidden outside .about-page, same trick as
+    // .about-signature below.
+    .about-glow,
+    .about-grid,
+    .about-frame {
+      display: none;
     }
 
     // How far the card sits from the viewport edge - the sides get a bigger
     // inset than top/bottom so the card reads as a shorter, less
     // edge-to-edge rectangle rather than matching the viewport's own wide
-    // aspect ratio. Its own inner border is a second, smaller inset so
-    // there's still a visible margin of card background between the card's
-    // true edge and the visible frame line. Content stays centered in a
-    // fixed-width column (see the shared width/max-width rule below) rather
-    // than stretching to fill the card's full width.
+    // aspect ratio. Its own inner border (.about-frame below) is a second,
+    // smaller inset so there's still a visible margin of card background
+    // between the card's true edge and the visible frame line. Content
+    // stays left-aligned in a fixed-width column (see the shared
+    // width/max-width rule below) rather than stretching to fill the card.
     $about-outer-inset-x: clamp(90px, 14vw, 240px);
     $about-outer-inset-y: clamp(48px, 6.5vw, 120px);
+
+    // The same four-graphic cluster used by .enter-gate-graphic-group (earth
+    // peeking up, eye and clock tucked behind, eye-clock dominant on top) -
+    // anchored over the card's own bottom-right corner. A child of
+    // .webpage-content (last in source order) rather than a sibling, so the
+    // card's own overflow: hidden crops it at the card's true edge instead
+    // of letting it bleed out past the border into the page.
+    .about-corner-graphic-group {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      --about-corner-size: clamp(200px, 17vw, 340px);
+      width: var(--about-corner-size);
+      height: var(--about-corner-size);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.6s ease;
+    }
+
+    &.about-mode.open .about-corner-graphic-group {
+      opacity: 0.95;
+    }
+
+    .about-corner-graphic {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      border-radius: 50%;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: 114%;
+    }
+
+    // Faintest - just a hint peeking above the main graphic.
+    .about-corner-graphic--earth {
+      width: calc(var(--about-corner-size) * 1.5);
+      height: calc(var(--about-corner-size) * 1.5);
+      background-image: url("/images/element_1.webp");
+      opacity: 1;
+      transform: translate(-50%, calc(-50% - var(--about-corner-size) * 0.38));
+    }
+
+    // Same size as earth/clock - a sliver tucked behind the main graphic's
+    // bottom-left.
+    .about-corner-graphic--eye {
+      width: calc(var(--about-corner-size) * 1.5);
+      height: calc(var(--about-corner-size) * 1.5);
+      background-image: url("/images/element_2.webp");
+      opacity: 0.38;
+      transform: translate(
+        calc(-50% - var(--about-corner-size) * 0.38),
+        calc(-50% + var(--about-corner-size) * 0.3)
+      );
+    }
+
+    // Same size as earth/eye, peeking out to the right.
+    .about-corner-graphic--clock {
+      width: calc(var(--about-corner-size) * 1.5);
+      height: calc(var(--about-corner-size) * 1.5);
+      background-image: url("/images/element_3.webp");
+      opacity: 0.42;
+      transform: translate(
+        calc(-50% + var(--about-corner-size) * 0.38),
+        calc(-50% + var(--about-corner-size) * 0.3)
+      );
+    }
+
+    // Dead center, largest and dominant, on top of all three.
+    .about-corner-graphic--eyeclock {
+      width: calc(var(--about-corner-size)*1.3);
+      height: calc(var(--about-corner-size)*1.3);
+      background-image: url("/images/element_4.webp");
+      opacity: 0.95;
+      transform: translate(-50%, -50%);
+    }
 
     .webpage-content.about-page {
       top: $about-outer-inset-y;
@@ -490,34 +1107,60 @@
       max-height: none;
       padding: 3rem;
       border: none;
-      border-radius: 14px;
+      // Base .webpage-content above sets a -20px 0 70px box-shadow tuned for
+      // the right-edge drawer pages - its large blur wraps every side of
+      // this centered card unevenly and reads as a soft/rounded edge even
+      // though the box itself is square. #enter-gate has no box-shadow at
+      // all (just its own hard 1px frame), so drop it here too.
+      box-shadow: none;
       overflow: hidden;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      background:
-        linear-gradient(rgba(vars.$color-cream, 0.06) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(vars.$color-cream, 0.06) 1px, transparent 1px),
-        vars.$color-overlay-bg;
-      background-size: 16px 16px, 16px 16px, auto;
-      // Pops out from the center rather than sliding in - a bigger scale
-      // jump than a subtle fade. Same duration/easing on both transform and
-      // opacity (no overshoot) so the close transition - which just reverses
-      // this same rule - reads as an exact mirror of the open one, instead of
-      // the open pop finishing with a visible bounce the close never shows.
-      transform: scale(0.85);
-      transform-origin: center;
+      background: vars.$color-overlay-bg;
+      // Fades in place at its centered position rather than sliding or
+      // scaling in. transform is explicitly cancelled - the base
+      // .webpage-content rule above sets translateX(100%)/translateX(0) for
+      // the drawer pages, and without an override here that leaks straight
+      // through (specificity only wins per-property when both rules set it).
+      transform: none;
       opacity: 0;
-      transition: transform 0.4s ease, opacity 0.4s ease;
+      transition: opacity 0.5s ease;
 
-      &::before {
-        content: '';
+      // Soft blue nebula behind the grid - element_5.webp is a flat,
+      // rough-edged paint blob, so it's blurred and knocked back in opacity
+      // here rather than shown at full strength, which is what turns it
+      // into a diffuse cloud instead of a hard blue splat. inset is pulled
+      // in past the card's own edge so the blur has room to fade out before
+      // it's cropped by the card's own overflow: hidden.
+      .about-glow {
+        display: block;
+        position: absolute;
+        inset: -20%;
+        background-image: url("/images/element_5.webp");
+        background-size: 85% auto;
+        background-position: 12% 20%;
+        background-repeat: no-repeat;
+        opacity: 0.45;
+        filter: blur(35px);
+      }
+
+      .about-grid {
+        display: block;
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(vars.$color-cream, 0.06) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(vars.$color-cream, 0.06) 1px, transparent 1px);
+        background-size: 40px 40px;
+      }
+
+      .about-frame {
+        display: block;
         position: absolute;
         inset: 1.75rem;
         border: 1px solid rgba(vars.$color-cream, 0.85);
-        border-radius: 8px;
-        pointer-events: none;
       }
 
       .about-signature,
@@ -525,11 +1168,16 @@
       p.reveal {
         width: 100%;
         max-width: 640px;
+        // .about-glow/.about-grid/.about-frame above are position: absolute
+        // too - without this, stacking falls back to DOM tree order among
+        // *all* positioned descendants regardless of source order, which
+        // would paint that chrome over the text instead of under it.
+        position: relative;
+        z-index: 1;
       }
     }
 
     &.open .webpage-content.about-page {
-      transform: scale(1);
       opacity: 1;
     }
 
@@ -547,6 +1195,10 @@
 
     .webpage-content.about-page .about-signature {
       display: block;
+      // Undo the base rule's left-bearing nudge - that was tuned for
+      // flush-left alignment, but this page centers its text, so the nudge
+      // would instead skew the signature off-center from the heading below.
+      margin-left: 0;
     }
 
     .webpage-content.about-page #webpage-heading {
@@ -853,7 +1505,7 @@
     // sit in this slot, moved to .case-study-elements-gears below instead.
     .case-study-elements-detail {
       z-index: 3;
-      top: 67.2%;
+      top: 69.2%;
       left: 35%;
       width: 58%;
       aspect-ratio: 16 / 9;
@@ -868,7 +1520,7 @@
     // wins it that corner rather than sitting underneath.
     .case-study-elements-gears {
       z-index: 3;
-      top: 58%;
+      top: 60%;
       left: 22%;
       width: 40%;
       aspect-ratio: 16 / 9;
@@ -967,6 +1619,305 @@
 
       &:empty {
         display: none;
+      }
+    }
+  }
+
+  // Floating project carousel shown while inside the gallery diorama (see
+  // showGalleryProjectsDisplay/enterGallery in main.js) - reads as a HUD
+  // hovering over the round table rather than a page: no full-bleed backdrop,
+  // just the header/cards/footer floating directly over the 3D scene, same
+  // family of type (Montserrat/TT Commons Pro/Courier New) and $color-cream
+  // on dark as the rest of the site's overlays. Edges are kept sharp
+  // (border-radius: 0 throughout) per the reference's rounded style being
+  // deliberately squared off to match this site's own frames.
+  #gallery-table-hint {
+    position: fixed;
+    left: calc(50% + 12px);
+    top: 49%;
+    z-index: 7;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.45rem;
+    color: vars.$color-cream;
+    opacity: 0;
+    transform: translate(-50%, 12px);
+    transition:
+      opacity 0.35s ease,
+      transform 0.4s cubic-bezier(0.22, 0.61, 0.36, 1);
+    pointer-events: none;
+
+    &.visible {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+  }
+
+  .gallery-table-hint-line {
+    width: 8px;
+    height: 8px;
+    border-right: 1px solid rgba(vars.$color-cream, 0.85);
+    border-bottom: 1px solid rgba(vars.$color-cream, 0.85);
+    transform: rotate(45deg);
+    transform-origin: center;
+    animation: gallery-hint-line 1.8s ease-in-out infinite;
+  }
+
+  .gallery-table-hint-copy {
+    display: block;
+  }
+
+  .gallery-table-hint-action {
+    font-family: "Courier New", ui-monospace, monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    text-shadow: 0 1px 5px rgba(0, 0, 0, 0.9);
+  }
+
+  @keyframes gallery-hint-line {
+    0%, 100% {
+      opacity: 0.35;
+      transform: rotate(45deg) scale(0.75);
+    }
+    50% {
+      opacity: 1;
+      transform: rotate(45deg) scale(1);
+    }
+  }
+
+  #gallery-projects-display {
+    position: fixed;
+    inset: 0;
+    z-index: 6;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(1.25rem, 2.4vw, 2rem);
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+
+    &.visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    .gallery-projects-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 0.35rem;
+    }
+
+    .gallery-projects-eyebrow {
+      font-family: "Courier New", ui-monospace, monospace;
+      font-size: 0.75rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: rgba(vars.$color-cream, 0.5);
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    }
+
+    .gallery-projects-title {
+      margin: 0;
+      font-family: "TT Commons Pro", "Montserrat", sans-serif;
+      font-weight: 700;
+      font-size: clamp(1.4rem, 3vw, 2.1rem);
+      line-height: 1.1;
+      color: vars.$color-cream;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+    }
+
+    .gallery-projects-meta {
+      font-size: 0.8rem;
+      letter-spacing: 0.05em;
+      color: rgba(vars.$color-cream, 0.65);
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    }
+
+    .gallery-projects-stage {
+      display: flex;
+      align-items: center;
+      gap: clamp(0.75rem, 2vw, 1.75rem);
+    }
+
+    .gallery-projects-track {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    // Cards overlap slightly rather than sitting gap-separated, same fanned
+    // read as the reference - distance-from-active (see the offset ->
+    // --active/--near/--far classes in main.js) controls size/opacity/lift.
+    // Width/height themselves snap instantly on a class change (deliberately
+    // left out of the transition below) - stepGalleryDisplay's FLIP pass
+    // fakes the resize via a transform: scale(...) instead, so the whole
+    // move/resize/fade plays as one continuous transform transition rather
+    // than fighting a concurrent native width/height reflow.
+    .gallery-projects-card {
+      position: relative;
+      flex: 0 0 auto;
+      margin: 0 -1.1rem;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+      overflow: hidden;
+      padding: 0;
+      cursor: pointer;
+      transition: transform 0.4s cubic-bezier(.2, .7, .2, 1), opacity 0.4s ease;
+
+      // contain (not cover) so each project image is shown at its own
+      // original aspect ratio, uncropped - same convention as
+      // .projects-detail-media img elsewhere on the site - letterboxed
+      // within the card rather than cropped to fill it.
+      img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+    }
+
+    .gallery-projects-card--active {
+      width: clamp(240px, 22vw, 340px);
+      height: clamp(165px, 20vh, 235px);
+      z-index: 3;
+      box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
+    }
+
+    .gallery-projects-card--near {
+      width: clamp(170px, 15vw, 240px);
+      height: clamp(118px, 14vh, 166px);
+      z-index: 2;
+      opacity: 0.62;
+      transform: translateY(10px);
+
+      &:hover {
+        opacity: 0.85;
+        transform: translateY(4px);
+      }
+    }
+
+    .gallery-projects-card--far {
+      width: clamp(120px, 10.5vw, 170px);
+      height: clamp(82px, 10vh, 118px);
+      z-index: 1;
+      opacity: 0.3;
+      transform: translateY(18px);
+
+      &:hover {
+        opacity: 0.5;
+      }
+    }
+
+    // Bare glyph, no box - same "just text, color shifts on hover" language
+    // as .enter-gate-side (the ENTER/PORTFOLIO gate buttons) rather than a
+    // bordered button, so it reads as part of the floating HUD instead of a
+    // UI chrome element sitting on top of it.
+    .gallery-projects-nav {
+      flex: 0 0 auto;
+      border: none;
+      background: none;
+      padding: 0.5rem;
+      color: vars.$color-cream;
+      font-size: 1.6rem;
+      line-height: 1;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+      cursor: pointer;
+      transition: color 0.25s ease;
+
+      &:hover {
+        color: vars.$color-hover-blue;
+      }
+    }
+
+    // Pinned near the bottom of the viewport rather than sitting in the
+    // centered header/stage/footer column - #gallery-projects-display's own
+    // `transform` above gives fixed descendants a containing block matching
+    // its own inset: 0 box, so left/right here still resolve against the
+    // full viewport. Centered via left/right + auto margins rather than the
+    // usual left: 50%/translateX(-50%) trick - stepGalleryDisplay's slide
+    // animation drives this element's own `transform` in JS, and that
+    // inline style would otherwise clobber a transform-based centering.
+    // Styled like .projects-detail-meta (a plain top-border divider, no
+    // panel) rather than the old bordered/blurred box, so it reads as the
+    // same flat HUD language as the rest of the site's overlays instead of a
+    // bolted-on card.
+    .gallery-projects-footer {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: clamp(1.5rem, 5vh, 3.25rem);
+      margin-inline: auto;
+      display: flex;
+      align-items: center;
+      gap: clamp(1.25rem, 3vw, 2.5rem);
+      padding-top: 1rem;
+      width: max-content;
+      max-width: min(92vw, 640px);
+      border-top: 1px solid rgba(vars.$color-cream, 0.2);
+    }
+
+    .gallery-projects-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .gallery-projects-field-label {
+      font-size: 0.65rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(vars.$color-cream, 0.45);
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    }
+
+    .gallery-projects-field-value {
+      font-size: 0.82rem;
+      color: vars.$color-cream;
+      white-space: nowrap;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    }
+
+    // Matches .projects-detail-cta's own bordered/invert-on-hover treatment
+    // exactly, plus a text-shadow since this one floats directly over the 3D
+    // scene rather than a page backdrop.
+    .gallery-projects-open {
+      flex: 0 0 auto;
+      padding: 0.65rem 1.3rem;
+      border: 1px solid rgba(vars.$color-cream, 0.7);
+      border-radius: 0;
+      background: none;
+      font-family: "Courier New", ui-monospace, monospace;
+      font-size: 0.78rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      color: vars.$color-cream;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+      cursor: pointer;
+      transition: background 0.2s ease, color 0.2s ease;
+
+      &:hover {
+        background: vars.$color-cream;
+        color: vars.$color-overlay-bg;
+        text-shadow: none;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .gallery-projects-footer {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.75rem 1.5rem;
       }
     }
   }
@@ -1078,15 +2029,24 @@
     }
   }
 
-  // The About page (see openAboutWebpage in main.js) is a centered card with
-  // plenty of backdrop showing around it, not an edge-to-edge drawer - clicking
-  // outside the card already closes it (same click-outside handler every other
-  // page uses), so there's no need to swap the hamburger for an explicit close
-  // (X) button the way the full-page Projects view does. Both overrides need
-  // an extra class in the selector to outrank the two rules above.
+  // Project detail pages already provide an in-context "Back to gallery"
+  // control, so the global corner close mark is unnecessary here.
+  body.projects-open #webpage-overlay.open ~ #webpage-close {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  body.projects-open #scene-exit {
+    display: none;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  // The About page closes by clicking outside its centered card, so neither
+  // top-right control is needed while it is open.
   #webpage-overlay.about-mode.open ~ #menu-toggle {
-    opacity: 1;
-    pointer-events: auto;
+    opacity: 0;
+    pointer-events: none;
   }
 
   #webpage-overlay.about-mode.open ~ #webpage-close {
@@ -1157,4 +2117,3 @@
     opacity: 0;
     pointer-events: none;
   }
-
