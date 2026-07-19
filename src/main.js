@@ -29,9 +29,6 @@ const enterGatePortfolioButton = document.querySelector("#enter-gate-portfolio")
 const enterGateMuteButton = document.querySelector("#enter-gate-mute");
 const webpageOverlay = document.querySelector("#webpage-overlay");
 const webpageContent = document.querySelector(".webpage-content");
-const bottomPanelOverlay = document.querySelector("#bottom-panel-overlay");
-const bottomPanelContent = document.querySelector(".bottom-panel-content");
-const bottomPanelHeading = document.querySelector("#bottom-panel-heading");
 const sceneExitButton = document.querySelector("#scene-exit");
 const webpageCloseButton = document.querySelector("#webpage-close");
 const webpageHeading = document.querySelector("#webpage-heading");
@@ -57,10 +54,9 @@ const menuToggle = document.querySelector("#menu-toggle");
 const siteMenu = document.querySelector("#site-menu");
 const siteMenuLinks = document.querySelectorAll("[data-menu-link]");
 let isWebpageOpen = false;
-let isBottomPanelOpen = false;
 let isMenuOpen = false;
 // True from page load until the gate is dismissed (see hideEnterGate) -
-// checked alongside isWebpageOpen/isBottomPanelOpen/isMenuOpen wherever the
+// checked alongside isWebpageOpen/isMenuOpen wherever the
 // 3D scene needs to ignore clicks/hover happening underneath it.
 let isEnterGateOpen = true;
 let assetsReady = false;
@@ -80,23 +76,6 @@ let webpageDiveTween = null;
 // play its own close animation out.
 let webpageCloseCleanupTimer = null;
 const preWebpageCameraPosition = new THREE.Vector3();
-let bottomPanelRevealTimer = null;
-let bottomPanelDiveTween = null;
-const preBottomPanelCameraPosition = new THREE.Vector3();
-// 0 = peeking at its resting height, 1 = fully grown to fill the screen.
-// Chases bottomPanelExpandTarget every frame (see the render loop) rather
-// than jumping straight to it on each wheel tick, so growing it feels like
-// a damped drag instead of a stepped, clunky snap on every scroll event.
-let bottomPanelExpandProgress = 0;
-
-// What bottomPanelExpandProgress is currently chasing - set directly by the
-// wheel listener further down, in step with how far the user has scrolled.
-let bottomPanelExpandTarget = 0;
-
-// interact_2's former case-study panel identifiers are retained for its
-// project data builder, but the panel is no longer opened from the 3D scene.
-const bottomPanelGroupKey = '2';
-
 // Same idea again, but for interact_3: once its only stage is reached (the
 // shared overview shot it has in common with '1'/'2'), clicking interact_3 a
 // second time doesn't step back out - it swaps the whole scene into the
@@ -885,7 +864,7 @@ const environmentMap = new THREE.CubeTextureLoader(loadingManager)
 
     ]);
 
-gltfLoader.load("/models/portfolio_project_model_v14_compressed.glb", (glb) => {
+gltfLoader.load("/models/portfolio_project_model_v15_compressed.glb", (glb) => {
     glb.scene.traverse((child) => {
         if (!child.isMesh) return;
 
@@ -1497,7 +1476,7 @@ canvas.addEventListener('wheel', interruptExitToOverview, { passive: true });
 // rather than the hovered mesh itself, so a keypress can act exactly like
 // clicking its corresponding interact_<n> mesh.
 function handleInteraction(targetGroupKey) {
-    if (isWebpageOpen || isMenuOpen || isBottomPanelOpen) return;
+    if (isWebpageOpen || isMenuOpen) return;
 
     // interact_table only exists (and is only raycastable) once inside the
     // gallery diorama - handled here rather than falling into the desk
@@ -1650,11 +1629,6 @@ window.addEventListener('click', (event) => {
     // panel only ever opens via scroll (see the wheel listener below), so
     // there's no risk of the opening click racing this check the way the
     // side panel's did.
-    if (isBottomPanelOpen && !bottomPanelContent.contains(event.target)) {
-        closeBottomPanel();
-        return;
-    }
-
     const groupKey = hoveredMesh ? hoveredMesh.userData.groupKey : null;
 
     // First click on any prop that actually has a scene (i.e. really zooms the
@@ -1676,7 +1650,7 @@ window.addEventListener('click', (event) => {
     // isWebpageOpen/isMenuOpen guard handleInteraction applies to every other
     // key, so it's a no-op while either is open rather than toggling behind them.
     if (groupKey === 'volume') {
-        if (!isWebpageOpen && !isMenuOpen && !isBottomPanelOpen) setSoundEnabled(!isSoundEnabled);
+        if (!isWebpageOpen && !isMenuOpen) setSoundEnabled(!isSoundEnabled);
         return;
     }
 
@@ -1690,7 +1664,7 @@ window.addEventListener('click', (event) => {
     // nothing in the overview (handleInteraction(null) below is a no-op
     // there), so stamping a sticker down on the bare desk/floor can't steal
     // a click meant for anything else.
-    if (groupKey === null && !isContactZoomedIn && !isWebpageOpen && !isMenuOpen && !isBottomPanelOpen
+    if (groupKey === null && !isContactZoomedIn && !isWebpageOpen && !isMenuOpen
         && stickerTargetMesh && Date.now() >= stickerCooldownUntil) {
         raycaster.setFromCamera(pointer, camera);
         const stickerHit = raycastStickerTargetHit();
@@ -2550,255 +2524,6 @@ function closeWebpage({ restoreGallery = true } = {}) {
     }, closingProjectDetail ? 650 : 600);
 }
 
-// interact_2's bottom panel - same reveal choreography as openWebpage above,
-// including the same subtle camera dive push as the panel slides in. Opens
-// automatically on arrival (see the onStageArrived wiring in
-// handleInteraction), same as the side panel does for interact_1 - starts
-// peeking up from the bottom edge rather than filling the screen right away
-// (see setBottomPanelExpandProgress and the wheel listener below, which grow
-// it in step with how far the user actually scrolls).
-function openBottomPanel({ heading, buildBody }) {
-    isBottomPanelOpen = true;
-    bottomPanelOverlay.classList.add('open');
-    bottomPanelContent.classList.remove('revealed');
-    setBottomPanelExpandProgress(0);
-    bottomPanelExpandTarget = 0;
-    controls.enabled = false;
-
-    preBottomPanelCameraPosition.copy(camera.position);
-    const diveTarget = camera.position.clone().lerp(controls.target, 0.14);
-    bottomPanelDiveTween?.kill();
-    bottomPanelDiveTween = gsap.to(camera.position, {
-        x: diveTarget.x,
-        y: diveTarget.y,
-        z: diveTarget.z,
-        duration: 1.1,
-        ease: 'power2.out',
-    });
-
-    bottomPanelContent.querySelectorAll('.reveal').forEach((el) => el.remove());
-    buildBody(bottomPanelContent);
-
-    bottomPanelHeading.dataset.text = heading;
-    playTypewriter(bottomPanelHeading, heading);
-    clearTimeout(bottomPanelRevealTimer);
-    bottomPanelRevealTimer = setTimeout(() => bottomPanelContent.classList.add('revealed'), 450);
-}
-
-// The content half of openBottomPanel - kept separate so handleInteraction
-// can pass it as a plain onArrived callback (same shape as openWebpage).
-function openInteract2BottomPanel() {
-    const { title } = scenes[bottomPanelGroupKey].label;
-    openBottomPanel({ heading: title, buildBody: buildExplodedWatchCaseStudy });
-}
-
-// Case-study body for the Exploded Watch project - adapted from the
-// standalone exploded-watch.html/.css reference page: a title/date cover,
-// an absolutely-positioned collage of desk/café/wireframe shots plus the
-// skills list and concept copy, then a full-bleed final render, inside the
-// bottom panel's own scroll and restyled with this site's fonts/colors in
-// place of the reference's own. The reference's full-bleed cover photo was
-// dropped (see the cover below) since it wasn't actually part of this 3D
-// scene. Every position in style.scss's .case-study-elements-* rules is
-// copied straight from the reference's percentages, so the collage reads as
-// the same composition, just scaled to the panel's column instead of a full
-// page.
-function buildExplodedWatchCaseStudy(container) {
-    // Shared by the desk/café/detail shots below (not the wireframe or the
-    // cover/final renders, which each have their own bespoke markup) -
-    // .case-study-media (style.scss) is the reference's .elements__image
-    // wrapper/hover-zoom pattern, modifierClass is one of its --desk/--cafe/
-    // --detail equivalents.
-    const media = (modifierClass, file, alt) => {
-        const fig = document.createElement('figure');
-        fig.className = `case-study-media ${modifierClass}`;
-        const img = document.createElement('img');
-        img.src = `/images/${file}`;
-        img.alt = alt;
-        img.loading = 'lazy';
-        fig.appendChild(img);
-        return fig;
-    };
-
-    const caseStudy = document.createElement('div');
-    caseStudy.className = 'case-study reveal';
-
-    // Cover - just the project title/date, no photo: the reference's own
-    // cover shot wasn't actually part of this 3D scene, so it read as a
-    // random stock photo bolted onto the top of the case study rather than
-    // something that belonged to it.
-    const cover = document.createElement('div');
-    cover.className = 'case-study-cover';
-    const coverTitle = document.createElement('p');
-    coverTitle.className = 'case-study-cover-title';
-    coverTitle.textContent = 'Watch Diorama';
-    const coverDate = document.createElement('p');
-    coverDate.className = 'case-study-cover-date';
-    coverDate.textContent = scenes[bottomPanelGroupKey].label.date;
-    cover.append(coverTitle, coverDate);
-
-    const hint = document.createElement('p');
-    hint.className = 'case-study-hint';
-    hint.textContent = 'Scroll down to see more, or scroll back up to return to the scene.';
-
-    // Elements - the collaged desk/café/wireframe composition, positioned
-    // to match the reference design's .elements section exactly.
-    const elements = document.createElement('div');
-    elements.className = 'case-study-elements';
-
-    // bottomPanelHeading (declared near the top of this file) is moved in
-    // here rather than left where it sits in index.html, so its typewriter
-    // reveal plays as the big "ELEMENTS" headline pinned to this section's
-    // top-left corner, same as the reference's own .elements h2. Typewriter
-    // targets the same node wherever it's parented, so playTypewriter in
-    // openBottomPanel is unaffected by the move.
-    elements.appendChild(bottomPanelHeading);
-    elements.appendChild(media('case-study-elements-desk', 'watch_scene1.webp', "Close-up of the watch's miniature workstation"));
-    elements.appendChild(media('case-study-elements-cafe', 'watch_scene3.webp', "Close-up of the watch's central café platform"));
-
-    // Not built with the media() helper above - the reference's own
-    // .elements__wireframe is a static, pre-cropped shot (object-position +
-    // a fixed transform, no hover-zoom), not one of its .elements__image
-    // siblings.
-    const wireframe = document.createElement('figure');
-    wireframe.className = 'case-study-elements-wireframe';
-    const wireframeImg = document.createElement('img');
-    wireframeImg.src = '/images/wireframe_watch_2.webp';
-    wireframeImg.alt = 'Wireframe view of the exploded watch model';
-    wireframeImg.loading = 'lazy';
-    wireframe.appendChild(wireframeImg);
-    elements.appendChild(wireframe);
-
-    const skills = document.createElement('ul');
-    skills.className = 'case-study-elements-skills';
-    [
-        'Hard-surface modelling',
-        'Prop and asset creation',
-        'Lighting',
-        'Developing concepts from sketches and references',
-        'Scene organisation',
-        'Animation',
-        'UV mapping',
-        'Texture baking',
-        'Rendering',
-        'Compositing and post-production',
-    ].forEach((text) => {
-        const li = document.createElement('li');
-        li.textContent = text;
-        skills.appendChild(li);
-    });
-    elements.appendChild(skills);
-
-    const conceptCopy = document.createElement('p');
-    conceptCopy.className = 'case-study-elements-concept';
-    conceptCopy.textContent = 'Using 3D environments to explode a watch and contrast its mechanical structure with the warmth of a miniature cafe and workstation.';
-    elements.appendChild(conceptCopy);
-
-    // watch_scene4 (the finished watch case, shot square-on) now fills the
-    // large detail slot; watch_scene2 (the conveyor/gear close-up that used
-    // to sit there) moved to its own smaller spot instead, overlapping the
-    // wireframe's base mechanism and detail's top-left corner the same way
-    // the heading overlaps the wireframe above.
-    elements.appendChild(media('case-study-elements-detail', 'watch_scene4.webp', 'Top-down view of the finished watch case'));
-    elements.appendChild(media('case-study-elements-gears', 'watch_scene2.webp', "Close-up of the watch's conveyor and gear details"));
-
-    // Not built with media() either, for the same reason as the wireframe -
-    // the reference's .final-render isn't one of its .elements__image
-    // siblings, so it never gets their hover-zoom.
-    const finalRender = document.createElement('figure');
-    finalRender.className = 'case-study-final';
-    const finalImg = document.createElement('img');
-    finalImg.src = '/images/image_3.webp';
-    finalImg.alt = 'Final rendered view of the exploded watch';
-    finalImg.loading = 'lazy';
-    finalRender.appendChild(finalImg);
-
-    caseStudy.append(cover, hint, elements, finalRender);
-    container.appendChild(caseStudy);
-}
-
-function closeBottomPanel() {
-    isBottomPanelOpen = false;
-    bottomPanelOverlay.classList.remove('open');
-    bottomPanelContent.classList.remove('revealed');
-    controls.enabled = true;
-
-    clearTimeout(typewriterTimer);
-    clearTimeout(bottomPanelRevealTimer);
-    bottomPanelDiveTween?.kill();
-    bottomPanelDiveTween = gsap.to(camera.position, {
-        x: preBottomPanelCameraPosition.x,
-        y: preBottomPanelCameraPosition.y,
-        z: preBottomPanelCameraPosition.z,
-        duration: 0.8,
-        ease: 'power2.inOut',
-    });
-}
-
-function setBottomPanelExpandProgress(progress) {
-    bottomPanelExpandProgress = THREE.MathUtils.clamp(progress, 0, 1);
-    const peekHeight = Math.min(360, window.innerHeight * 0.7);
-    const height = THREE.MathUtils.lerp(peekHeight, window.innerHeight, bottomPanelExpandProgress);
-    bottomPanelContent.style.height = `${height}px`;
-
-    // Only let the content scroll natively once the panel is fully expanded
-    // (see the .expanded CSS rule) - otherwise the same wheel gesture that's
-    // still growing the panel toward full height would also scroll its
-    // content, so it'd land already scrolled partway down instead of at the
-    // top. Reset scrollTop on the way back down through this boundary too,
-    // so a partial scroll left over from this pass doesn't carry into the
-    // next time the panel is fully expanded.
-    // >= 0.999 rather than === 1: the render loop's damping only chases
-    // progress to within 0.0005 of the target before it stops updating, so
-    // progress settles just under 1 and never lands on it exactly.
-    const wasExpanded = bottomPanelContent.classList.contains('expanded');
-    const isExpanded = bottomPanelExpandProgress >= 0.999;
-    if (isExpanded !== wasExpanded) {
-        bottomPanelContent.classList.toggle('expanded', isExpanded);
-        if (!isExpanded) bottomPanelContent.scrollTop = 0;
-    }
-}
-
-// How much wheel travel (in px of deltaY) it takes to sweep all the way
-// from peeking to filling the screen.
-const bottomPanelScrollThrow = 700;
-
-// How quickly the panel's displayed height catches up to
-// bottomPanelExpandTarget in the render loop - an exponential decay rate
-// (per second, not per frame) rather than a flat per-frame lerp factor, so
-// the chase converges at the same real-world speed regardless of display
-// refresh rate instead of visibly speeding up on 120Hz/144Hz screens and
-// dragging on slower ones - see the render loop below.
-const bottomPanelExpandDecay = 12;
-
-window.addEventListener('wheel', (event) => {
-    if (isBottomPanelOpen) {
-        const nextTarget = bottomPanelExpandTarget + event.deltaY / bottomPanelScrollThrow;
-
-        // Only close once already resting at the peek (target 0) and still
-        // scrolling up from there - clamping at 0 first rather than closing
-        // the instant the sum dips below it means a trackpad's inertial
-        // "coast to a stop" (which often dips slightly negative right as the
-        // user lifts their fingers) doesn't slam the panel shut on a gesture
-        // that only ever meant to reach the peek.
-        if (nextTarget <= 0) {
-            if (bottomPanelExpandTarget <= 0) {
-                closeBottomPanel();
-            } else {
-                bottomPanelExpandTarget = 0;
-            }
-            return;
-        }
-
-        // The render loop eases bottomPanelExpandProgress toward this every
-        // frame (see bottomPanelExpandDecay above) instead of the height
-        // jumping straight to it on every wheel tick.
-        bottomPanelExpandTarget = Math.min(nextTarget, 1);
-        return;
-    }
-
-}, { passive: true });
-
 sceneExitButton.addEventListener('click', (event) => {
     event.stopPropagation();
     if (!isContactZoomedIn) return;
@@ -2870,11 +2595,6 @@ window.addEventListener('keydown', (event) => {
         return;
     }
 
-    if (isBottomPanelOpen) {
-        closeBottomPanel();
-        return;
-    }
-
     handleInteraction('esc');
 });
 
@@ -2886,7 +2606,7 @@ window.addEventListener('keydown', (event) => {
 // holding the key down can't fire through both steps off one press.
 window.addEventListener('keydown', (event) => {
     if (event.key.toLowerCase() !== 'x' || event.repeat) return;
-    if (isWebpageOpen || isMenuOpen || isBottomPanelOpen || isAnimatingCamera) return;
+    if (isWebpageOpen || isMenuOpen || isAnimatingCamera) return;
 
     if (isGalleryTableZoomedIn) {
         exitGalleryTable();
@@ -2999,33 +2719,8 @@ window.addEventListener('resize', () => {
 
 function animate() {}
 
-// Tracked across frames so the render loop's bottom-panel easing below can
-// work out actual elapsed time instead of assuming a fixed frame duration.
-let lastFrameTimestamp = performance.now();
-
 const render = () => {
     controls.update();
-
-    const now = performance.now();
-    // Clamped so a frame after the tab was backgrounded/throttled doesn't
-    // read as one huge elapsed step - the exponential decay below already
-    // handles a large delta gracefully (it just snaps closer to the target),
-    // but there's no reason to feed it more than this.
-    const deltaSeconds = Math.min((now - lastFrameTimestamp) / 1000, 0.1);
-    lastFrameTimestamp = now;
-
-    // Ease the bottom panel's displayed height toward wherever the wheel
-    // listener has last moved bottomPanelExpandTarget, rather than snapping
-    // straight to it - smooths out the per-tick jumps a mouse wheel (or a
-    // choppy trackpad) would otherwise produce. An exponential decay over
-    // actual elapsed time (see bottomPanelExpandDecay) rather than a flat
-    // per-frame lerp, so the motion is exactly as fluid at 30fps as 144fps.
-    if (isBottomPanelOpen && Math.abs(bottomPanelExpandTarget - bottomPanelExpandProgress) > 0.0005) {
-        setBottomPanelExpandProgress(
-            bottomPanelExpandProgress
-                + (bottomPanelExpandTarget - bottomPanelExpandProgress) * (1 - Math.exp(-bottomPanelExpandDecay * deltaSeconds))
-        );
-    }
 
     // Only show once the final stage is reached (e.g. interact_1's second
     // click), not on the shared overview stage[0] shot. Also drops as soon as
@@ -3041,7 +2736,7 @@ const render = () => {
         sceneLabelTitle.textContent = activeLabel.title;
         sceneLabelDate.textContent = activeLabel.date;
     }
-    sceneLabel.classList.toggle('visible', !!activeLabel && !isWebpageOpen && !isMenuOpen && !isBottomPanelOpen);
+    sceneLabel.classList.toggle('visible', !!activeLabel && !isWebpageOpen && !isMenuOpen);
 
     if (!isAnimatingCamera && !isContactZoomedIn) {
         const panOffset = controls.target.clone().sub(panCenter);
@@ -3064,7 +2759,7 @@ const render = () => {
     // listener, so the raycaster would otherwise keep hovering/popping/sounding
     // props right underneath whatever's actually covering the screen. Suspend
     // hover detection entirely while any of those are open instead.
-    const isSceneObscured = isWebpageOpen || isBottomPanelOpen || isMenuOpen || isEnterGateOpen;
+    const isSceneObscured = isWebpageOpen || isMenuOpen || isEnterGateOpen;
 
     if (isSceneObscured) {
         hoveredMesh = null;
