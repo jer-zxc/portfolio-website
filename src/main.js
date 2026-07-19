@@ -149,7 +149,7 @@ loadingManager.onProgress = (url, itemsLoaded, itemsTotal) => {
 loadingManager.onLoad = () => {
     assetsReady = true;
     loadingScreen.classList.add('hidden');
-    if (location.hash.startsWith('#project-') || location.hash.startsWith('#scene-')) {
+    if (getRouteFromLocation()) {
         ensureIntroPropsVisible();
         isEnterGateOpen = false;
         enterGate.classList.remove('visible');
@@ -836,13 +836,46 @@ const sceneSlugByGroupKey = Object.fromEntries(
     Object.entries(sceneRouteMap).map(([slug, groupKey]) => [groupKey, slug]),
 );
 
-function replaceRouteHash(hash = '') {
-    history.replaceState(null, '', `${location.pathname}${location.search}${hash}`);
+function getRouteFromLocation() {
+    const projectPathMatch = location.pathname.match(/\/project-([^/]+)\/?$/);
+    if (projectPathMatch) return { type: 'project', slug: projectPathMatch[1] };
+
+    const legacyScenePathMatch = location.pathname.match(/\/scene-([^/]+)\/?$/);
+    if (legacyScenePathMatch && sceneRouteMap[legacyScenePathMatch[1]]) {
+        return { type: 'scene', slug: legacyScenePathMatch[1], legacy: true };
+    }
+
+    const scenePathMatch = location.pathname.match(/\/([^/]+)\/?$/);
+    if (scenePathMatch && sceneRouteMap[scenePathMatch[1]]) {
+        return { type: 'scene', slug: scenePathMatch[1] };
+    }
+
+    const hashMatch = location.hash.match(/^#(project|scene)-(.+)$/);
+    return hashMatch ? { type: hashMatch[1], slug: hashMatch[2] } : null;
+}
+
+function getRouteBasePath() {
+    const route = getRouteFromLocation();
+    if (!route) return location.pathname;
+    const suffix = route.type === 'project'
+        ? `project-${route.slug}`
+        : route.legacy ? `scene-${route.slug}` : route.slug;
+    return location.pathname.replace(new RegExp(`${suffix}/?$`), '');
+}
+
+function routeUrl(type, slug) {
+    const base = getRouteBasePath();
+    if (!slug) return base;
+    return type === 'scene' ? `${base}${slug}` : `${base}project-${slug}`;
+}
+
+function replaceRoute(type, slug) {
+    history.replaceState(null, '', `${routeUrl(type, slug)}${location.search}`);
 }
 
 function setSceneRoute(groupKey) {
     const slug = sceneSlugByGroupKey[groupKey];
-    if (slug) replaceRouteHash(`#scene-${slug}`);
+    if (slug) replaceRoute('scene', slug);
 }
 
 // Total number of camera-moving interactions - one per distinct scenes[]
@@ -860,7 +893,7 @@ const environmentMap = new THREE.CubeTextureLoader(loadingManager)
 
     ]);
 
-gltfLoader.load("/models/portfolio_project_model_v13_compressed.glb", (glb) => {
+gltfLoader.load("/models/portfolio_project_model_v14_compressed.glb", (glb) => {
     glb.scene.traverse((child) => {
         if (!child.isMesh) return;
 
@@ -1385,7 +1418,7 @@ function finishExitingToOverview() {
     zoomedLiftsMesh = false;
     zoomedFreeCamera = false;
     isExitingToOverview = false;
-    if (location.hash.startsWith('#scene-')) replaceRouteHash();
+    if (getRouteFromLocation()?.type === 'scene') replaceRoute();
 }
 
 // Leaves whichever scene is currently zoomed in and glides the camera back
@@ -1615,7 +1648,9 @@ window.addEventListener('click', (event) => {
     // processed, so the very click that opens the panel (isWebpageOpen still
     // false here) never immediately closes itself further down.
     if (isWebpageOpen && !webpageContent.contains(event.target)) {
+        const closingAboutPage = webpageContent.classList.contains('about-page');
         closeWebpage();
+        if (closingAboutPage && isContactZoomedIn) exitZoomedScene();
         return;
     }
 
@@ -1734,14 +1769,15 @@ const legacyProjectRouteAliases = {
 function routeFromHash() {
     if (!assetsReady) return;
 
-    const projectKey = location.hash.match(/^#project-(.+)$/)?.[1];
+    const route = getRouteFromLocation();
+    const projectKey = route?.type === 'project' ? route.slug : null;
     if (projectKey) {
         const resolvedKey = legacyProjectRouteAliases[projectKey] || projectKey;
         openProjectDetailPage(projectsData.find((project) => project.key === resolvedKey));
         return;
     }
 
-    const sceneSlug = location.hash.match(/^#scene-(.+)$/)?.[1];
+    const sceneSlug = route?.type === 'scene' ? route.slug : null;
     const groupKey = sceneRouteMap[sceneSlug];
     if (!groupKey) return;
 
@@ -1768,6 +1804,9 @@ function routeFromHash() {
 }
 
 window.addEventListener('hashchange', () => {
+    if (assetsReady) location.reload();
+});
+window.addEventListener('popstate', () => {
     if (assetsReady) location.reload();
 });
 
@@ -1884,7 +1923,7 @@ function showProjectDetail(project) {
         nav.className = 'projects-detail-nav';
         projectsData.forEach((p) => {
             const thumb = document.createElement('a');
-            thumb.href = `#project-${p.key}`;
+            thumb.href = routeUrl('project', p.key);
             thumb.className = 'projects-detail-nav-thumb';
             thumb.classList.toggle('active', p.key === project.key);
             thumb.setAttribute('aria-label', `View project: ${p.title}`);
@@ -1904,7 +1943,6 @@ function showProjectDetail(project) {
                 // window-level "outside the page" close handler afterward.
                 event.stopPropagation();
                 if (dragMoved || p.key === project.key) return;
-                history.replaceState(null, '', thumb.hash);
                 showProjectDetail(p);
             });
             nav.appendChild(thumb);
@@ -2040,7 +2078,7 @@ function openWebpage({ heading, paragraphs } = {}) {
 // interface. The legacy Projects index no longer sits underneath it.
 function openProjectDetailPage(project) {
     if (!project || isWebpageOpen || isAnimatingCamera) return;
-    replaceRouteHash(`#project-${project.key}`);
+    replaceRoute('project', project.key);
 
     const open = () => {
         isWebpageOpen = true;
@@ -2405,10 +2443,10 @@ function openAboutWebpage() {
 
     const paragraph = document.createElement('p');
     paragraph.className = 'reveal';
-    paragraph.textContent = "Bonjour! 你好! Hello! I'm zxc, a self taught 3D designer building at the intersection of design, engineering and sustainability. I enjoy taking my combination of technical and creative skills to explore how objects are constructed in 3D.";
+    paragraph.textContent = "i'm jerry, a self taught 3d designer building at the intersection of design, engineering and sustainability. i enjoy taking my combination of technical and creative skills to explore 3d environments in blender!";
     webpageContent.appendChild(paragraph);
 
-    const headingText = 'ABOUT ME';
+    const headingText = 'about me';
     webpageHeading.dataset.text = headingText;
 
     // Flush the styles above - card is now .about-page but not yet .open, so
@@ -2422,7 +2460,9 @@ function openAboutWebpage() {
 
     playTypewriter(webpageHeading, headingText);
     clearTimeout(webpageRevealTimer);
-    webpageRevealTimer = setTimeout(() => webpageContent.classList.add('revealed'), 450);
+    // Begin the copy reveal with the card itself instead of waiting until
+    // the card animation is almost finished.
+    webpageRevealTimer = setTimeout(() => webpageContent.classList.add('revealed'), 50);
 }
 
 // Same entry point as the 3D "about"/"me" keycaps, but reachable straight
@@ -2489,8 +2529,9 @@ function closeWebpage({ restoreGallery = true } = {}) {
     const closingProjectDetail = webpageContent.classList.contains('full-page');
     const restoreGalleryAfterProjectSlide =
         closingProjectDetail && isGalleryEntered && restoreGallery;
-    if (closingProjectDetail && location.hash.startsWith('#project-')) {
-        replaceRouteHash(isGalleryEntered ? '#scene-gallery' : '');
+    if (closingProjectDetail && getRouteFromLocation()?.type === 'project') {
+        if (isGalleryEntered) replaceRoute('scene', 'gallery');
+        else replaceRoute();
     }
 
     isWebpageOpen = false;

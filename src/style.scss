@@ -1098,6 +1098,8 @@
     }
 
     .webpage-content.about-page {
+      --about-reveal-duration: 0.55s;
+      --about-reveal-easing: cubic-bezier(0.22, 0.61, 0.36, 1);
       top: $about-outer-inset-y;
       left: $about-outer-inset-x;
       right: $about-outer-inset-x;
@@ -1105,7 +1107,9 @@
       width: auto;
       height: auto;
       max-height: none;
-      padding: 3rem;
+      padding:
+        clamp(4rem, 7vw, 7rem)
+        clamp(5rem, 9vw, 9rem);
       border: none;
       // Base .webpage-content above sets a -20px 0 70px box-shadow tuned for
       // the right-edge drawer pages - its large blur wraps every side of
@@ -1116,8 +1120,8 @@
       overflow: hidden;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      justify-content: center;
+      align-items: flex-start;
+      justify-content: flex-start;
       background: vars.$color-overlay-bg;
       // Fades in place at its centered position rather than sliding or
       // scaling in. transform is explicitly cancelled - the base
@@ -1126,7 +1130,7 @@
       // through (specificity only wins per-property when both rules set it).
       transform: none;
       opacity: 0;
-      transition: opacity 0.5s ease;
+      transition: opacity var(--about-reveal-duration) var(--about-reveal-easing);
 
       // Soft blue nebula behind the grid - element_5.webp is a flat,
       // rough-edged paint blob, so it's blurred and knocked back in opacity
@@ -1167,7 +1171,7 @@
       #webpage-heading,
       p.reveal {
         width: 100%;
-        max-width: 640px;
+        max-width: 920px;
         // .about-glow/.about-grid/.about-frame above are position: absolute
         // too - without this, stacking falls back to DOM tree order among
         // *all* positioned descendants regardless of source order, which
@@ -1199,12 +1203,30 @@
       // flush-left alignment, but this page centers its text, so the nudge
       // would instead skew the signature off-center from the heading below.
       margin-left: 0;
+      width: auto;
+      font-size: clamp(2.8rem, 4.4vw, 4.4rem);
+      line-height: 0.8;
+      margin-bottom: 0.35rem;
+    }
+
+    .webpage-content.about-page p.reveal {
+      max-width: 920px;
+      margin-top: clamp(3rem, 7vh, 5rem);
+      font-weight: 700;
+      transition:
+        opacity var(--about-reveal-duration) var(--about-reveal-easing),
+        transform var(--about-reveal-duration) var(--about-reveal-easing);
     }
 
     .webpage-content.about-page #webpage-heading {
-      font-size: clamp(2.2rem, 5vw, 3.4rem);
+      width: auto;
+      font-size: clamp(3rem, 5.2vw, 4.5rem);
+      line-height: 0.95;
       letter-spacing: 0.01em;
       text-transform: uppercase;
+      margin-left: clamp(1.5rem, 2.5vw, 2.75rem);
+      margin-top: 0.45rem;
+      margin-bottom: 0;
     }
   }
 
