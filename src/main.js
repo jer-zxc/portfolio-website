@@ -5,6 +5,10 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DecalGeometry } from 'three/addons/geometries/DecalGeometry.js';
+import { inject } from '@vercel/analytics';
+
+// Inject Vercel Web Analytics
+inject();
 
 // The imported stylesheet is ready before module evaluation reaches this
 // line, so it is now safe to reveal the loading interface without a flash of
