@@ -184,6 +184,11 @@ const textureMap = {
     watch: "/textures/room/texture_set_watch.webp",
 };
 
+// These assets belong to standalone scenes and are fetched only when the
+// visitor opens them, keeping roughly 1.9 MB plus model decode work out of
+// the initial loading path.
+const deferredTextureKeys = new Set(['campground', 'gallery']);
+
 const loadedTextures = {
 
 };
@@ -229,6 +234,7 @@ function hideBakedSceneDate(texture) {
 }
 
 Object.entries(textureMap).forEach(([key, value]) => {
+    if (deferredTextureKeys.has(key)) return;
     const texture = textureLoader.load(value, (loadedTexture) => {
         if (key === 'scene') hideBakedSceneDate(loadedTexture);
     });
@@ -238,14 +244,29 @@ Object.entries(textureMap).forEach(([key, value]) => {
     loadedTextures[key] = texture;
 });
 
+const sharedTextureMaterials = Object.fromEntries(
+    Object.entries(loadedTextures).map(([key, texture]) => [
+        key,
+        new THREE.MeshBasicMaterial({ map: texture }),
+    ]),
+);
+
 const gltfLoader = new GLTFLoader(loadingManager);
 gltfLoader.setDRACOLoader(dracoLoader);
+const deferredTextureLoader = new THREE.TextureLoader();
+const deferredGltfLoader = new GLTFLoader();
+deferredGltfLoader.setDRACOLoader(dracoLoader);
 
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 const interactiveMeshes = [];
 let hoveredMesh = null;
 let lastHoveredGroupKey = null;
+let raycastDirty = true;
+let hudPositionDirty = true;
+const hoverRaycastHits = [];
+let renderedSceneLabel = null;
+let renderedSceneLabelVisible = false;
 
 // Background music + a short blip on hovering any interact_* prop. On by
 // default - toggled off/on by clicking interact_volume like any other key
@@ -253,13 +274,17 @@ let lastHoveredGroupKey = null;
 // rather than a separate DOM control. Drop the actual files into
 // public/audio/ (see the README there); until then play() just rejects
 // quietly, so the toggle is a harmless no-op.
-const backgroundMusic = new Audio('/audio/background-music.mp3');
+const backgroundMusic = new Audio();
+backgroundMusic.preload = 'none';
+backgroundMusic.src = '/audio/background-music.mp3';
 backgroundMusic.loop = true;
 backgroundMusic.volume = 0.6;
 
 // Swapped in for backgroundMusic while zoomed into the campground diorama
 // (see the "esc" scene's onEnter/onExit below), then swapped back out on exit.
-const forestSound = new Audio('/audio/forest_sound.mp3');
+const forestSound = new Audio();
+forestSound.preload = 'none';
+forestSound.src = '/audio/forest_sound.mp3';
 forestSound.loop = true;
 forestSound.volume = 0.6;
 
@@ -273,10 +298,12 @@ function switchMusicTrack(track) {
 
     currentMusicTrack.pause();
     currentMusicTrack = track;
-    if (isMusicEnabled) currentMusicTrack.play().catch(() => {});
+    if (isMusicEnabled && hasUnlockedAudio) currentMusicTrack.play().catch(() => {});
 }
 
-const hoverSound = new Audio('/audio/hover1.mp3');
+const hoverSound = new Audio();
+hoverSound.preload = 'none';
+hoverSound.src = '/audio/hover1.mp3';
 hoverSound.volume = 0.7;
 
 function playHoverSound() {
@@ -284,7 +311,9 @@ function playHoverSound() {
     hoverSound.play().catch(() => {});
 }
 
-const stickerPlaceSound = new Audio('/audio/hover2.mp3');
+const stickerPlaceSound = new Audio();
+stickerPlaceSound.preload = 'none';
+stickerPlaceSound.src = '/audio/hover2.mp3';
 stickerPlaceSound.volume = 0.7;
 
 function playStickerPlaceSound() {
@@ -302,11 +331,12 @@ const hoverSoundGroupKeys = new Set([
 ]);
 
 let isMusicEnabled = true;
+let hasUnlockedAudio = false;
 
 function setMusicEnabled(enabled) {
     isMusicEnabled = enabled;
 
-    if (enabled) {
+    if (enabled && hasUnlockedAudio) {
         currentMusicTrack.play().catch(() => {});
     } else {
         currentMusicTrack.pause();
@@ -336,6 +366,7 @@ window.addEventListener('keydown', (event) => {
 // the play() call above likely just rejected - retry once on the very first
 // pointerdown/keydown anywhere, since by then a real gesture has happened.
 function unlockBackgroundMusicOnFirstGesture() {
+    hasUnlockedAudio = true;
     if (isMusicEnabled && currentMusicTrack.paused) currentMusicTrack.play().catch(() => {});
 }
 window.addEventListener('pointerdown', unlockBackgroundMusicOnFirstGesture, { once: true });
@@ -352,10 +383,8 @@ let campgroundGroup = null;
 // duration so the gallery reads as its own space rather than something
 // tucked into a corner of the desk.
 let galleryGroup = null;
-let resolveGalleryReady;
-const galleryReady = new Promise((resolve) => {
-    resolveGalleryReady = resolve;
-});
+let campgroundReadyPromise = null;
+let galleryReadyPromise = null;
 
 // The root of the main desk/keyboard scene (set once the primary GLB below
 // finishes loading) - hidden while inside interact_3's gallery scene.
@@ -591,7 +620,6 @@ let isExitingToOverview = false;
 
 let isContactZoomedIn = false;
 let zoomedGroupKey = null;
-let zoomedTargetKey = null;
 let zoomStageIndex = 0;
 let zoomedLiftsMesh = false;
 // True only for scenes flagged freeCamera below (currently just the
@@ -604,6 +632,10 @@ const defaultCameraPosition = new THREE.Vector3(0.723, 12.210, 0.834);
 const defaultCameraTarget = new THREE.Vector3(0.723, 1.018, 0.155);
 
 const panCenter = new THREE.Vector3(0.723, 1.018, 0.155);
+const renderPanOffset = new THREE.Vector3();
+const renderClampedTarget = new THREE.Vector3();
+const renderPanCorrection = new THREE.Vector3();
+const renderTargetScale = new THREE.Vector3();
 const maxPanDistance = 6;
 const minPanY = 0.5;
 const maxPanY = 15;
@@ -768,6 +800,7 @@ const scenes = {
     },
     esc: {
         liftMesh: false,
+        prepare: ensureCampgroundReady,
         // The campground diorama is a separate glb, loaded hidden - reveal it
         // only while zoomed into this key rather than leaving it visible in
         // the overview like the rest of the props. Also swaps the ambient
@@ -885,6 +918,7 @@ const interactionCounterLabel = document.querySelector('.interaction-counter-lab
 function updateInteractionCounter() {
     interactionCounterValue.textContent = `${discoveredGroupKeys.size}/${totalInteractionCount}`;
     interactionCounterValue.style.fontSize = '';
+    hudPositionDirty = true;
 
     requestAnimationFrame(() => {
         const labelWidth = interactionCounterLabel.getBoundingClientRect().width;
@@ -905,6 +939,19 @@ const environmentMap = new THREE.CubeTextureLoader(loadingManager)
         'px.webp', 'nx.webp', 'py.webp', 'ny.webp', 'pz.webp', 'nz.webp'
 
     ]);
+
+const sharedTransparentMaterial = new THREE.MeshPhysicalMaterial({
+    color: 0xffffff,
+    transmission: 1,
+    opacity: 1,
+    metalness: 0,
+    roughness: 0,
+    ior: 1.5,
+    thickness: 0.01,
+    specularIntensity: 1,
+    envMap: environmentMap,
+    envMapIntensity: 1,
+});
 
 gltfLoader.load("/models/portfolio_project_model_v15_compressed.glb", (glb) => {
     glb.scene.traverse((child) => {
@@ -953,27 +1000,13 @@ gltfLoader.load("/models/portfolio_project_model_v15_compressed.glb", (glb) => {
         }
 
         if (child.name.includes("transparent")) {
-            child.material = new THREE.MeshPhysicalMaterial({
-                color: 0xffffff,
-                transmission: 1,
-                opacity: 1,
-                metalness: 0,
-                roughness: 0,
-                ior: 1.5,
-                thickness: 0.01,
-                specularIntensity: 1,
-                envMap: environmentMap,
-                envMapIntensity: 1,
-            });
+            child.material = sharedTransparentMaterial;
             return;
         }
 
         Object.keys(loadedTextures).forEach((key) => {
             if (child.name.includes(key)) {
-                const material = new THREE.MeshBasicMaterial({
-                    map: loadedTextures[key]
-                });
-                child.material = material;
+                child.material = sharedTextureMaterials[key];
 
                 if (child.material.map) {
                     child.material.map.minFilter = THREE.LinearMipmapLinearFilter;
@@ -1015,63 +1048,80 @@ gltfLoader.load("/models/portfolio_project_model_v15_compressed.glb", (glb) => {
     controls.update();
 });
 
-// Standalone campground diorama - modeled/exported separately from the main
-// scene file, so it needs its own position/scale to line up where the old
-// inline placeholder used to sit near the esc key. Starts hidden; the "esc"
-// scene above toggles campgroundGroup.visible on enter/exit.
-gltfLoader.load("/models/campground_v2_compressed.glb", (glb) => {
-    campgroundGroup = glb.scene;
+// Standalone campground diorama - loaded only when interact_esc is opened.
+function ensureCampgroundReady() {
+    if (campgroundGroup) return Promise.resolve(campgroundGroup);
+    if (campgroundReadyPromise) return campgroundReadyPromise;
 
-    campgroundGroup.traverse((child) => {
-        if (!child.isMesh) return;
+    campgroundReadyPromise = Promise.all([
+        deferredTextureLoader.loadAsync(textureMap.campground),
+        deferredGltfLoader.loadAsync('/models/campground_v2_compressed.glb'),
+    ]).then(([texture, glb]) => {
+        texture.flipY = false;
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.anisotropy = 8;
+        texture.minFilter = THREE.LinearMipmapLinearFilter;
+        loadedTextures.campground = texture;
 
-        child.material = new THREE.MeshBasicMaterial({ map: loadedTextures.campground });
-        child.material.map.minFilter = THREE.LinearMipmapLinearFilter;
+        const material = new THREE.MeshBasicMaterial({ map: texture });
+        campgroundGroup = glb.scene;
+        campgroundGroup.traverse((child) => {
+            if (child.isMesh) child.material = material;
+        });
+
+        campgroundGroup.position.set(-9.53, 0.56, -3.63);
+        campgroundGroup.visible = isContactZoomedIn && zoomedGroupKey === 'esc';
+        scene.add(campgroundGroup);
+        return campgroundGroup;
+    }).catch((error) => {
+        campgroundReadyPromise = null;
+        throw error;
     });
 
-    // Pulled well back (-5, 0, -2.5) from the esc key's own position so the
-    // diorama sits as its own isolated scene instead of crowding the keyboard.
-    campgroundGroup.position.set(-9.53, 0.56, -3.63);
-    campgroundGroup.visible = false;
+    return campgroundReadyPromise;
+}
 
-    scene.add(campgroundGroup);
-});
+// Standalone gallery diorama - likewise loaded on its first visit.
+function ensureGalleryReady() {
+    if (galleryGroup) return Promise.resolve(galleryGroup);
+    if (galleryReadyPromise) return galleryReadyPromise;
 
-// Standalone gallery diorama - same pattern as campgroundGroup above, but
-// gated on interact_3's own expanded view instead, which also hides
-// mainModelGroup while this is visible (see enterGallery further down)
-// rather than just parking it off to the side of the desk.
-gltfLoader.load("/models/gallery_v3_compressed.glb", (glb) => {
-    galleryGroup = glb.scene;
+    galleryReadyPromise = Promise.all([
+        deferredTextureLoader.loadAsync(textureMap.gallery),
+        deferredGltfLoader.loadAsync('/models/gallery_v3_compressed.glb'),
+    ]).then(([texture, glb]) => {
+        texture.flipY = false;
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.anisotropy = 8;
+        texture.minFilter = THREE.LinearMipmapLinearFilter;
+        loadedTextures.gallery = texture;
 
-    galleryGroup.traverse((child) => {
-        if (!child.isMesh) return;
+        const material = new THREE.MeshBasicMaterial({ map: texture });
+        galleryGroup = glb.scene;
+        galleryGroup.traverse((child) => {
+            if (!child.isMesh) return;
+            child.material = material;
 
-        child.material = new THREE.MeshBasicMaterial({ map: loadedTextures.gallery });
-        child.material.map.minFilter = THREE.LinearMipmapLinearFilter;
+            if (child.name.includes('interact')) {
+                child.userData.initialScale = child.scale.clone();
+                child.userData.initialPosition = child.position.clone();
+                child.userData.groupKey = getInteractGroupKey(child.name);
+                child.userData.isKeyboardKey = false;
+                interactiveMeshes.push(child);
+            }
+        });
 
-        // interact_table (see enterGalleryTable/handleInteraction further
-        // down) - same "interact_" naming convention as the main model's own
-        // keycaps (see getInteractGroupKey above), pushed into the shared
-        // interactiveMeshes list so it hovers/raycasts the same way despite
-        // living in this separate diorama. Not a keyboard key (no press
-        // lift), just the generic hover pop every other non-keycap prop gets.
-        if (child.name.includes("interact")) {
-            child.userData.initialScale = child.scale.clone();
-            child.userData.initialPosition = child.position.clone();
-            child.userData.groupKey = getInteractGroupKey(child.name);
-            child.userData.isKeyboardKey = false;
-
-            interactiveMeshes.push(child);
-        }
+        galleryGroup.position.set(0, 0, 0);
+        galleryGroup.visible = false;
+        scene.add(galleryGroup);
+        return galleryGroup;
+    }).catch((error) => {
+        galleryReadyPromise = null;
+        throw error;
     });
 
-    galleryGroup.position.set(0, 0, 0);
-    galleryGroup.visible = false;
-
-    scene.add(galleryGroup);
-    resolveGalleryReady();
-});
+    return galleryReadyPromise;
+}
 
 const scene = new THREE.Scene();
 window.__debugScene = scene;
@@ -1089,9 +1139,9 @@ scene.add(directionalLight);
 
 const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
 renderer.setSize( sizes.width, sizes.height );
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const maxPixelRatio = 1.5;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxPixelRatio));
 
-renderer.setAnimationLoop( animate );
 document.body.appendChild( renderer.domElement );
 
 // Shared with resetFreeCameraBounds below, which restores this exact value
@@ -1149,11 +1199,17 @@ controls.addEventListener('start', () => {
     hideNavigationInstructions();
 });
 
+controls.addEventListener('change', () => {
+    raycastDirty = true;
+    hudPositionDirty = true;
+});
+
 //event listeners
 window.addEventListener('pointermove', (event) => {
     const rect = canvas.getBoundingClientRect();
     pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    raycastDirty = true;
 });
 
 // Animates camera.position and controls.target together over a fixed
@@ -1343,6 +1399,7 @@ function showGalleryTableHint() {
         || isWebpageOpen
     ) return;
     galleryTableHint.classList.add('visible');
+    hudPositionDirty = true;
 }
 
 function hideGalleryTableHint() {
@@ -1365,6 +1422,7 @@ function updateGalleryTableHintPosition() {
         hideGalleryTableHint();
         return;
     }
+    if (!hudPositionDirty) return;
 
     const tableMeshes = interactiveMeshes.filter(
         (mesh) => mesh.userData.groupKey === 'table' && mesh.visible,
@@ -1411,10 +1469,14 @@ function updateLastInteractionHintPosition() {
         && !isEnterGateOpen;
 
     if (!canShow) {
-        lastInteractionHint.classList.remove('visible');
-        lastInteractionHint.style.visibility = '';
+        if (lastInteractionHint.classList.contains('visible')) {
+            lastInteractionHint.classList.remove('visible');
+            lastInteractionHint.style.visibility = '';
+        }
         return;
     }
+
+    if (!hudPositionDirty && lastInteractionHint.classList.contains('visible')) return;
 
     const remainingGroupKey = [...new Set(Object.keys(scenes).map(countedInteractionGroupKey))]
         .find((groupKey) => !discoveredGroupKeys.has(groupKey));
@@ -1472,7 +1534,7 @@ function enterGallery(onComplete) {
                 // Do not expose the scene swap, model completion, or the
                 // first material/shader compile before the transition is
                 // fully opaque.
-                await galleryReady;
+                await ensureGalleryReady();
                 if (mainModelGroup) mainModelGroup.visible = false;
                 galleryGroup.visible = true;
                 await renderer.compileAsync(scene, camera);
@@ -1773,7 +1835,10 @@ function handleInteraction(targetGroupKey) {
         };
 
         if (scene.transitionOverlay) {
-            animateCameraBehindOverlay(firstStage.position, firstStage.lookAt, { onComplete: onArrived });
+            animateCameraBehindOverlay(firstStage.position, firstStage.lookAt, {
+                onCovered: scene.prepare,
+                onComplete: onArrived,
+            });
         } else {
             animateCameraTo(firstStage.position, firstStage.lookAt, { onComplete: onArrived });
         }
@@ -2559,7 +2624,6 @@ function openAboutWebpage() {
 
     webpageContent.querySelectorAll('#projects-root').forEach((el) => el.remove());
     webpageContent.querySelectorAll('p.reveal').forEach((p) => p.remove());
-    webpageContent.querySelectorAll('.about-credit').forEach((el) => el.remove());
     webpageHeading.style.removeProperty('display');
 
     const paragraph = document.createElement('p');
@@ -2934,10 +2998,10 @@ window.addEventListener('resize', () => {
 
     //update renderer
     renderer.setSize(sizes.width, sizes.height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxPixelRatio));
+    raycastDirty = true;
+    hudPositionDirty = true;
 })
-
-function animate() {}
 
 const render = () => {
     controls.update();
@@ -2952,23 +3016,28 @@ const render = () => {
         && zoomStageIndex === zoomedScene.stages.length - 1
         && !isExitingToOverview;
     const activeLabel = isOnFinalStage ? zoomedScene.label : null;
-    if (activeLabel) {
+    if (activeLabel && activeLabel !== renderedSceneLabel) {
         sceneLabelTitle.textContent = activeLabel.title;
         sceneLabelDate.textContent = activeLabel.date;
+        renderedSceneLabel = activeLabel;
     }
-    sceneLabel.classList.toggle('visible', !!activeLabel && !isWebpageOpen && !isMenuOpen);
+    const sceneLabelVisible = !!activeLabel && !isWebpageOpen && !isMenuOpen;
+    if (sceneLabelVisible !== renderedSceneLabelVisible) {
+        sceneLabel.classList.toggle('visible', sceneLabelVisible);
+        renderedSceneLabelVisible = sceneLabelVisible;
+    }
 
     if (!isAnimatingCamera && !isContactZoomedIn) {
-        const panOffset = controls.target.clone().sub(panCenter);
+        renderPanOffset.copy(controls.target).sub(panCenter);
 
-        if (panOffset.length() > maxPanDistance) {
-            panOffset.setLength(maxPanDistance);
+        if (renderPanOffset.length() > maxPanDistance) {
+            renderPanOffset.setLength(maxPanDistance);
 
-            const clampedTarget = panCenter.clone().add(panOffset);
-            const correction = clampedTarget.clone().sub(controls.target);
+            renderClampedTarget.copy(panCenter).add(renderPanOffset);
+            renderPanCorrection.copy(renderClampedTarget).sub(controls.target);
 
-            controls.target.copy(clampedTarget);
-            camera.position.add(correction);
+            controls.target.copy(renderClampedTarget);
+            camera.position.add(renderPanCorrection);
         }
 
         camera.position.y = THREE.MathUtils.clamp(camera.position.y, minPanY, maxPanY);
@@ -2985,7 +3054,8 @@ const render = () => {
         hoveredMesh = null;
         lastHoveredGroupKey = null;
         canvas.style.cursor = 'default';
-    } else {
+        raycastDirty = true;
+    } else if (raycastDirty) {
         raycaster.setFromCamera(pointer, camera);
         const activeScene = isContactZoomedIn ? scenes[zoomedGroupKey] : null;
         const canHoverSharedGroups = isContactZoomedIn
@@ -2997,8 +3067,9 @@ const render = () => {
                 activeScene?.extraInteractiveGroupKeys?.includes(mesh.userData.groupKey) ||
                 (canHoverSharedGroups && sharedFirstStageGroupKeys.has(mesh.userData.groupKey)))
             : interactiveMeshes;
-        const intersections = raycaster.intersectObjects(raycastableMeshes);
-        hoveredMesh = intersections.length > 0 ? intersections[0].object : null;
+        hoverRaycastHits.length = 0;
+        raycaster.intersectObjects(raycastableMeshes, true, hoverRaycastHits);
+        hoveredMesh = hoverRaycastHits.length > 0 ? hoverRaycastHits[0].object : null;
 
         // Sticker placement (see placeSticker) only applies in the plain
         // overview, on the bare desk/floor itself - crosshair hints that a
@@ -3020,6 +3091,7 @@ const render = () => {
             playHoverSound();
         }
         lastHoveredGroupKey = hoveredGroupKey;
+        raycastDirty = false;
     }
 
     interactiveMeshes.forEach((mesh) => {
@@ -3033,10 +3105,10 @@ const render = () => {
 
             // Character diorama pieces get a bigger hover pop than other props.
             const hoverScale = /^character\d+$/.test(mesh.userData.groupKey) ? 1.35 : 1.15;
-            const targetScale = mesh.userData.initialScale
-                .clone()
-                .multiplyScalar(isHovered ? hoverScale : 1);
-            mesh.scale.lerp(targetScale, 0.15);
+            renderTargetScale.copy(mesh.userData.initialScale).multiplyScalar(isHovered ? hoverScale : 1);
+            if (mesh.scale.distanceToSquared(renderTargetScale) > 1e-8) {
+                mesh.scale.lerp(renderTargetScale, 0.15);
+            }
             return;
         }
 
@@ -3046,11 +3118,14 @@ const render = () => {
 
         const isKeyboardPressed = keyboardPressedGroups.has(mesh.userData.groupKey);
         const targetPosition = (isHovered || isKeyboardPressed) ? mesh.userData.pressedPosition : mesh.userData.initialPosition;
-        mesh.position.lerp(targetPosition, 0.35);
+        if (mesh.position.distanceToSquared(targetPosition) > 1e-8) {
+            mesh.position.lerp(targetPosition, 0.35);
+        }
     });
 
     updateGalleryTableHintPosition();
     updateLastInteractionHintPosition();
+    hudPositionDirty = false;
     renderer.render(scene, camera);
     window.requestAnimationFrame(render);
 };

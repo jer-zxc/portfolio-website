@@ -1299,19 +1299,6 @@
         transform var(--about-reveal-duration) var(--about-reveal-easing);
     }
 
-    .webpage-content.about-page .about-credit {
-      position: absolute;
-      left: clamp(2rem, 6vw, 6rem);
-      bottom: clamp(2rem, 4vh, 3rem);
-      z-index: 4;
-      margin: 0;
-      font-family: "Courier New", ui-monospace, monospace;
-      font-size: clamp(0.58rem, 0.7vw, 0.72rem);
-      font-weight: 400;
-      letter-spacing: 0.025em;
-      color: rgba(vars.$color-cream, 0.45);
-    }
-
     .webpage-content.about-page #webpage-heading {
       width: auto;
       font-size: clamp(3rem, 5.2vw, 4.5rem);
