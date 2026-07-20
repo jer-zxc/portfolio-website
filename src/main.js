@@ -36,8 +36,11 @@ const sceneLabel = document.querySelector("#scene-label");
 const sceneLabelTitle = document.querySelector("#scene-label-title");
 const sceneLabelDate = document.querySelector("#scene-label-date");
 const interactionCounterValue = document.querySelector("#interaction-counter-value");
+const navigationInstructions = document.querySelector("#navigation-instructions");
 const switchingScenesOverlay = document.querySelector("#switching-scenes");
+const switchingScenesFact = document.querySelector("#switching-scenes-fact");
 const galleryTableHint = document.querySelector("#gallery-table-hint");
+const lastInteractionHint = document.querySelector("#last-interaction-hint");
 const galleryProjectsDisplay = document.querySelector("#gallery-projects-display");
 const galleryProjectsHeader = document.querySelector(".gallery-projects-header");
 const galleryProjectsFooter = document.querySelector(".gallery-projects-footer");
@@ -70,6 +73,7 @@ let typewriterTimer = null;
 let webpageRevealTimer = null;
 let webpageDiveTween = null;
 let aboutOpenTimer = null;
+let navigationIdleTimer = null;
 // Delays stripping the 'about-page'/'full-page' variant classes on close
 // until their own close transition has actually finished playing - see
 // closeWebpage. Removing them immediately would snap the panel back to the
@@ -145,6 +149,7 @@ loadingManager.onLoad = () => {
 function hideEnterGate() {
     isEnterGateOpen = false;
     enterGate.classList.remove('visible');
+    navigationInstructions.classList.add('visible');
     setTimeout(playIntroWave, 600);
 }
 
@@ -157,9 +162,9 @@ enterGatePortfolioButton.addEventListener('click', hideEnterGate);
 // pointerdown listener (see unlockBackgroundMusicOnFirstGesture further
 // down) that unlocks currentMusicTrack on the very first gesture anywhere -
 // since that pointerdown bubbles up from this button too. Setting
-// isSoundEnabled here, on pointerdown rather than click, runs before that
+// isMusicEnabled here, on pointerdown rather than click, runs before that
 // bubbled listener fires.
-enterGateMuteButton.addEventListener('pointerdown', () => setSoundEnabled(false));
+enterGateMuteButton.addEventListener('pointerdown', () => setMusicEnabled(false));
 enterGateMuteButton.addEventListener('click', hideEnterGate);
 
 const textureLoader = new THREE.TextureLoader(loadingManager);
@@ -261,14 +266,14 @@ forestSound.volume = 0.6;
 let currentMusicTrack = backgroundMusic;
 
 // Pauses whichever track is currently playing and starts `track` in its
-// place (only if sound is currently enabled) - used to switch the ambient
+// place (only if music is currently enabled) - used to switch the ambient
 // music per-scene rather than always looping backgroundMusic.
 function switchMusicTrack(track) {
     if (currentMusicTrack === track) return;
 
     currentMusicTrack.pause();
     currentMusicTrack = track;
-    if (isSoundEnabled) currentMusicTrack.play().catch(() => {});
+    if (isMusicEnabled) currentMusicTrack.play().catch(() => {});
 }
 
 const hoverSound = new Audio('/audio/hover1.mp3');
@@ -296,10 +301,10 @@ const hoverSoundGroupKeys = new Set([
     'up', 'down', 'left', 'right',
 ]);
 
-let isSoundEnabled = true;
+let isMusicEnabled = true;
 
-function setSoundEnabled(enabled) {
-    isSoundEnabled = enabled;
+function setMusicEnabled(enabled) {
+    isMusicEnabled = enabled;
 
     if (enabled) {
         currentMusicTrack.play().catch(() => {});
@@ -308,13 +313,30 @@ function setSoundEnabled(enabled) {
     }
 }
 
-setSoundEnabled(true);
+function toggleMusic() {
+    setMusicEnabled(!isMusicEnabled);
+}
+
+setMusicEnabled(true);
+
+// Support physical media controls even when they are handled by the browser
+// rather than delivered as an ordinary KeyboardEvent.
+if ('mediaSession' in navigator) {
+    navigator.mediaSession.setActionHandler('play', () => setMusicEnabled(true));
+    navigator.mediaSession.setActionHandler('pause', () => setMusicEnabled(false));
+}
+
+window.addEventListener('keydown', (event) => {
+    if (event.key !== 'MediaPlayPause' || event.repeat) return;
+    event.preventDefault();
+    toggleMusic();
+});
 
 // Browsers block audio-with-sound until a user gesture unlocks the page, so
 // the play() call above likely just rejected - retry once on the very first
 // pointerdown/keydown anywhere, since by then a real gesture has happened.
 function unlockBackgroundMusicOnFirstGesture() {
-    if (isSoundEnabled && currentMusicTrack.paused) currentMusicTrack.play().catch(() => {});
+    if (isMusicEnabled && currentMusicTrack.paused) currentMusicTrack.play().catch(() => {});
 }
 window.addEventListener('pointerdown', unlockBackgroundMusicOnFirstGesture, { once: true });
 window.addEventListener('keydown', unlockBackgroundMusicOnFirstGesture, { once: true });
@@ -442,7 +464,7 @@ let stickerPlacementCounter = 0;
 // directly to the scene sidesteps that entirely; the mesh is static at
 // runtime so there's no "stays put if the mesh moves" tradeoff to worry about.
 function placeSticker(intersection, { forcedTexture = null, sizeMultiplier = 1, noFade = false } = {}) {
-    if (isSoundEnabled) playStickerPlaceSound();
+    playStickerPlaceSound();
 
     const targetMesh = intersection.object;
 
@@ -858,7 +880,24 @@ function setSceneRoute(groupKey) {
 // check in handleInteraction). Known synchronously, so the top-left counter
 // can show its real denominator before the model loads.
 const totalInteractionCount = new Set(Object.keys(scenes).map(countedInteractionGroupKey)).size;
-interactionCounterValue.textContent = `${discoveredGroupKeys.size}/${totalInteractionCount}`;
+const interactionCounterLabel = document.querySelector('.interaction-counter-label');
+
+function updateInteractionCounter() {
+    interactionCounterValue.textContent = `${discoveredGroupKeys.size}/${totalInteractionCount}`;
+    interactionCounterValue.style.fontSize = '';
+
+    requestAnimationFrame(() => {
+        const labelWidth = interactionCounterLabel.getBoundingClientRect().width;
+        const valueWidth = interactionCounterValue.getBoundingClientRect().width;
+        const baseFontSize = Number.parseFloat(getComputedStyle(interactionCounterValue).fontSize);
+        if (labelWidth > 0 && valueWidth > 0 && Number.isFinite(baseFontSize)) {
+            interactionCounterValue.style.fontSize = `${baseFontSize * (labelWidth / valueWidth)}px`;
+        }
+    });
+}
+
+updateInteractionCounter();
+document.fonts?.ready.then(updateInteractionCounter);
 
 const environmentMap = new THREE.CubeTextureLoader(loadingManager)
     .setPath('/textures/skybox/')
@@ -1079,6 +1118,35 @@ controls.addEventListener('end', () => {
     const t = controls.target;
     console.log(`camera.position.set(${p.x.toFixed(3)}, ${p.y.toFixed(3)}, ${p.z.toFixed(3)});`);
     console.log(`controls.target.set(${t.x.toFixed(3)}, ${t.y.toFixed(3)}, ${t.z.toFixed(3)});`);
+    scheduleNavigationInstructions();
+});
+
+function hideNavigationInstructions() {
+    clearTimeout(navigationIdleTimer);
+    navigationIdleTimer = null;
+    navigationInstructions.classList.remove('visible');
+}
+
+function scheduleNavigationInstructions() {
+    clearTimeout(navigationIdleTimer);
+    navigationIdleTimer = setTimeout(() => {
+        navigationIdleTimer = null;
+        if (
+            !isContactZoomedIn
+            && !isAnimatingCamera
+            && !isWebpageOpen
+            && !isMenuOpen
+            && !isEnterGateOpen
+        ) {
+            navigationInstructions.classList.add('visible');
+        }
+    }, 5000);
+}
+
+// Hide immediately on every new orbit/pan/zoom gesture. The matching `end`
+// listener above starts a fresh five-second idle countdown.
+controls.addEventListener('start', () => {
+    hideNavigationInstructions();
 });
 
 //event listeners
@@ -1095,6 +1163,7 @@ window.addEventListener('pointermove', (event) => {
 // in-flight target silently get swapped for another.
 function animateCameraTo(position, lookAt, { duration = 1.15, ease = 'sine.inOut', onComplete } = {}) {
     cameraTween?.kill();
+    hideNavigationInstructions();
 
     isAnimatingCamera = true;
     controls.enabled = false;
@@ -1135,6 +1204,7 @@ function animateCameraTo(position, lookAt, { duration = 1.15, ease = 'sine.inOut
             // to re-enable controls - otherwise this would lock controls back
             // out using the stale, still-zoomed-in flag.
             onComplete?.();
+            if (!isContactZoomedIn) scheduleNavigationInstructions();
             // Stay locked out while zoomed into a scene; only free the
             // camera once the tween lands back on the pre-zoom overview -
             // except free-camera scenes (the campground), which unlock as
@@ -1158,8 +1228,29 @@ const galleryTableExitDuration = 1.15;
 const webpageExitDurationMs = 1000;
 let switchingScenesStartTimeout = null;
 let switchingScenesHideTimeout = null;
+let previousAnimalFactIndex = -1;
+const animalFacts = [
+    'Sea otters sometimes hold hands while sleeping so they do not drift apart.',
+    'Cows can form close friendships and may become stressed when separated.',
+    'Penguins often take turns keeping their eggs warm.',
+    'Rats make tiny chirping sounds when they are tickled.',
+    'Elephants comfort one another with gentle touches and soft sounds.',
+    'Dolphins use unique signature whistles a little like names.',
+    'Prairie dogs greet family members with a nuzzle that looks like a kiss.',
+    'Baby puffins are called pufflings.',
+    'Cats sometimes give slow blinks as a sign of trust.',
+    'Red pandas wrap their fluffy tails around themselves to keep warm.',
+    'Ducklings can communicate with one another before they hatch.',
+    'Squirrels sometimes adopt orphaned babies from their extended family.',
+];
 
 function showSwitchingScenes() {
+    let factIndex;
+    do {
+        factIndex = Math.floor(Math.random() * animalFacts.length);
+    } while (factIndex === previousAnimalFactIndex && animalFacts.length > 1);
+    previousAnimalFactIndex = factIndex;
+    switchingScenesFact.textContent = `Fact: ${animalFacts[factIndex].replace(/\.$/, '')}`;
     switchingScenesOverlay.classList.add('visible');
 }
 
@@ -1306,6 +1397,58 @@ function updateGalleryTableHintPosition() {
     galleryTableHint.style.top = `${(-galleryHintAnchor.y * 0.5 + 0.5) * sizes.height}px`;
 }
 
+const lastInteractionBounds = new THREE.Box3();
+const lastInteractionAnchor = new THREE.Vector3();
+const lastInteractionSize = new THREE.Vector3();
+
+function updateLastInteractionHintPosition() {
+    const canShow =
+        discoveredGroupKeys.size === totalInteractionCount - 1
+        && !isContactZoomedIn
+        && !isAnimatingCamera
+        && !isWebpageOpen
+        && !isMenuOpen
+        && !isEnterGateOpen;
+
+    if (!canShow) {
+        lastInteractionHint.classList.remove('visible');
+        lastInteractionHint.style.visibility = '';
+        return;
+    }
+
+    const remainingGroupKey = [...new Set(Object.keys(scenes).map(countedInteractionGroupKey))]
+        .find((groupKey) => !discoveredGroupKeys.has(groupKey));
+    const remainingMeshes = interactiveMeshes.filter((mesh) =>
+        countedInteractionGroupKey(mesh.userData.groupKey) === remainingGroupKey
+        && mesh.visible,
+    );
+
+    if (!remainingMeshes.length) {
+        lastInteractionHint.classList.remove('visible');
+        return;
+    }
+
+    lastInteractionBounds.makeEmpty();
+    remainingMeshes.forEach((mesh) => lastInteractionBounds.expandByObject(mesh));
+    lastInteractionBounds.getCenter(lastInteractionAnchor);
+    lastInteractionBounds.getSize(lastInteractionSize);
+    lastInteractionAnchor.y = lastInteractionBounds.max.y + Math.max(lastInteractionSize.y, 0.08) * 1.4;
+    lastInteractionAnchor.project(camera);
+
+    const isOnScreen =
+        lastInteractionAnchor.z >= -1
+        && lastInteractionAnchor.z <= 1
+        && Math.abs(lastInteractionAnchor.x) <= 1.05
+        && Math.abs(lastInteractionAnchor.y) <= 1.05;
+
+    lastInteractionHint.classList.add('visible');
+    lastInteractionHint.style.visibility = isOnScreen ? 'visible' : 'hidden';
+    if (!isOnScreen) return;
+
+    lastInteractionHint.style.left = `${(lastInteractionAnchor.x * 0.5 + 0.5) * sizes.width}px`;
+    lastInteractionHint.style.top = `${(-lastInteractionAnchor.y * 0.5 + 0.5) * sizes.height}px`;
+}
+
 // Clicking interact_3 again once already on its shared stage[0] shot (see
 // galleryGroupKey/galleryStageIndex) swaps the whole scene into the
 // gallery's standalone diorama - same transitionOverlay-covered glide +
@@ -1435,6 +1578,12 @@ function exitZoomedScene(onComplete) {
         isGalleryTableZoomedIn = false;
     }
 
+    // Free-camera scenes constrain OrbitControls around their own arrival
+    // angle. Release those constraints before animating home; otherwise each
+    // controls.update() during the tween clamps the default overview vector
+    // back toward the campground/gallery angle.
+    if (zoomedFreeCamera) resetFreeCameraBounds();
+
     if (zoomedLiftsMesh) {
         interactiveMeshes
             .filter((mesh) => mesh.userData.groupKey === zoomedGroupKey)
@@ -1470,7 +1619,10 @@ function exitZoomedScene(onComplete) {
     // current in-transit (not yet arrived) position, corrupting the
     // "original" spot that later exits would return to.
     if (exitingTransitionOverlay) {
-        animateCameraBehindOverlay(preZoomCameraPosition, preZoomCameraTarget, {
+        // A full scene swap always returns to the canonical home view. The
+        // pre-entry camera may have been heavily orbited or panned, making
+        // the main scene reappear from a disorienting angle.
+        animateCameraBehindOverlay(defaultCameraPosition, defaultCameraTarget, {
             duration: sceneExitDuration,
             ease: 'sine.inOut',
             onComplete: finish,
@@ -1658,7 +1810,7 @@ window.addEventListener('click', (event) => {
     const countedGroupKey = countedInteractionGroupKey(groupKey);
     if (groupKey !== null && scenes[groupKey] && !discoveredGroupKeys.has(countedGroupKey)) {
         discoveredGroupKeys.add(countedGroupKey);
-        interactionCounterValue.textContent = `${discoveredGroupKeys.size}/${totalInteractionCount}`;
+        updateInteractionCounter();
 
         if (discoveredGroupKeys.size === totalInteractionCount) {
             bonusStickerAvailable = true;
@@ -1670,7 +1822,7 @@ window.addEventListener('click', (event) => {
     // isWebpageOpen/isMenuOpen guard handleInteraction applies to every other
     // key, so it's a no-op while either is open rather than toggling behind them.
     if (groupKey === 'volume') {
-        if (!isWebpageOpen && !isMenuOpen) setSoundEnabled(!isSoundEnabled);
+        if (!isWebpageOpen && !isMenuOpen) toggleMusic();
         return;
     }
 
@@ -2862,8 +3014,7 @@ const render = () => {
         // Fires once per hover (on the group changing), not every frame the
         // pointer sits still over the same prop, and only for the whitelisted
         // groupKeys in hoverSoundGroupKeys.
-        if (isSoundEnabled
-            && hoveredGroupKey
+        if (hoveredGroupKey
             && hoveredGroupKey !== lastHoveredGroupKey
             && hoverSoundGroupKeys.has(hoveredGroupKey)) {
             playHoverSound();
@@ -2899,6 +3050,7 @@ const render = () => {
     });
 
     updateGalleryTableHintPosition();
+    updateLastInteractionHintPosition();
     renderer.render(scene, camera);
     window.requestAnimationFrame(render);
 };

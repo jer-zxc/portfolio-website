@@ -390,16 +390,34 @@
     top: 2.9rem;
     left: 2.75rem;
     z-index: 20;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     pointer-events: none;
+    font-family: "Montserrat", system-ui, sans-serif;
+    color: vars.$color-cream;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+
+    .interaction-counter-label {
+      font-size: 0.68rem;
+      line-height: 1;
+      font-weight: 600;
+      letter-spacing: normal;
+      text-align: center;
+      white-space: nowrap;
+    }
 
     .interaction-counter-value {
       display: inline-block;
+      margin-top: 0.5rem;
       font-family: "Courier New", ui-monospace, monospace;
-      font-size: 1rem;
-      letter-spacing: 0.03em;
+      font-size: 2.1rem;
+      line-height: 0.95;
+      font-weight: 700;
+      letter-spacing: 0.06em;
       font-variant-numeric: tabular-nums;
-      color: vars.$color-cream;
-      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+      color: inherit;
+      white-space: nowrap;
 
       // Toggled on in main.js once every interaction has been found (see
       // bonusStickerAvailable) - a one-shot bounce plus a looping red glow
@@ -410,6 +428,46 @@
           interaction-counter-bounce 0.5s ease,
           interaction-counter-glow 1.6s ease-in-out infinite 0.5s;
       }
+    }
+  }
+
+  #navigation-instructions {
+    position: fixed;
+    top: 46vh;
+    left: 2.75rem;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(0.4rem);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+    font-family: "Courier New", ui-monospace, monospace;
+    font-size: 0.68rem;
+    line-height: 1.25;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(245, 239, 222, 0.62);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+
+    &.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .navigation-instructions-title {
+      margin-bottom: 0.25rem;
+      font-family: "Montserrat", system-ui, sans-serif;
+      color: vars.$color-cream;
+      letter-spacing: 0.14em;
+    }
+
+    b {
+      display: inline-block;
+      min-width: 5.4rem;
+      color: rgba(245, 239, 222, 0.9);
+      font-weight: 400;
     }
   }
 
@@ -439,6 +497,14 @@
   // otherwise sit right on top of it.
   body.about-open #interaction-counter {
     display: none;
+  }
+
+  @media (max-width: 700px) {
+    #navigation-instructions {
+      top: 42vh;
+      left: 1.5rem;
+      font-size: 0.6rem;
+    }
   }
 
   // Full-screen transition graphic shown while the camera glides to a scene
@@ -550,6 +616,21 @@
       font-weight: 600;
       font-size: clamp(1rem, 1.6vw, 1.3rem);
       color: vars.$color-cream;
+    }
+
+    .switching-scenes-fact {
+      position: absolute;
+      top: calc(50% + 2.25rem);
+      left: 50%;
+      width: min(32rem, calc(100vw - 4rem));
+      transform: translateX(-50%);
+      font-family: "Courier New", ui-monospace, monospace;
+      font-size: clamp(0.66rem, 1vw, 0.78rem);
+      font-weight: 700;
+      line-height: 1.5;
+      letter-spacing: 0.04em;
+      text-align: center;
+      color: rgba(vars.$color-cream, 0.58);
     }
 
     .switching-scenes-dots span {
@@ -1377,6 +1458,46 @@
       opacity: 1;
       transform: rotate(45deg) scale(1);
     }
+  }
+
+  #last-interaction-hint {
+    position: fixed;
+    z-index: 7;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.45rem;
+    color: vars.$color-cream;
+    opacity: 0;
+    transform: translate(-50%, 12px);
+    transition:
+      opacity 0.35s ease,
+      transform 0.4s cubic-bezier(0.22, 0.61, 0.36, 1);
+    pointer-events: none;
+
+    &.visible {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+  }
+
+  .last-interaction-hint-copy {
+    font-family: "Courier New", ui-monospace, monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    text-shadow: 0 1px 5px rgba(0, 0, 0, 0.9);
+  }
+
+  .last-interaction-hint-line {
+    width: 10px;
+    height: 10px;
+    border-right: 1px solid rgba(vars.$color-cream, 0.9);
+    border-bottom: 1px solid rgba(vars.$color-cream, 0.9);
+    transform: rotate(45deg);
+    transform-origin: center;
+    animation: gallery-hint-line 1.4s ease-in-out infinite;
   }
 
   #gallery-projects-display {
