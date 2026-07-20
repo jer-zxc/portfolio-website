@@ -578,6 +578,8 @@ let zoomedLiftsMesh = false;
 let zoomedFreeCamera = false;
 const preZoomCameraPosition = new THREE.Vector3();
 const preZoomCameraTarget = new THREE.Vector3();
+const defaultCameraPosition = new THREE.Vector3(0.723, 12.210, 0.834);
+const defaultCameraTarget = new THREE.Vector3(0.723, 1.018, 0.155);
 
 const panCenter = new THREE.Vector3(0.723, 1.018, 0.155);
 const maxPanDistance = 6;
@@ -969,8 +971,8 @@ gltfLoader.load("/models/portfolio_project_model_v15_compressed.glb", (glb) => {
         }
     });
 
-    camera.position.set(0.723, 12.210, 0.834);
-    controls.target.set(0.723, 1.018, 0.155);
+    camera.position.copy(defaultCameraPosition);
+    controls.target.copy(defaultCameraTarget);
     controls.update();
 });
 
@@ -1893,12 +1895,20 @@ function showProjectDetail(project) {
             // properly (exitZoomedScene) before zooming into the new one.
             cta.addEventListener('click', () => {
                 const cameFromGallery = isGalleryEntered;
+                const openProjectIn3D = () => {
+                    handleInteraction(project.groupKey);
+                    // Project-page entry is a deliberate jump into a scene,
+                    // so its exit should always return home rather than to
+                    // the gallery/transitional camera captured above.
+                    preZoomCameraPosition.copy(defaultCameraPosition);
+                    preZoomCameraTarget.copy(defaultCameraTarget);
+                };
                 closeWebpage({ restoreGallery: !cameFromGallery });
                 setTimeout(() => {
                     if (cameFromGallery) {
-                        exitZoomedScene(() => handleInteraction(project.groupKey));
+                        exitZoomedScene(openProjectIn3D);
                     } else {
-                        handleInteraction(project.groupKey);
+                        openProjectIn3D();
                     }
                 }, 850);
             });
@@ -2404,11 +2414,6 @@ function openAboutWebpage() {
     paragraph.className = 'reveal';
     paragraph.textContent = "i'm jerry, a self taught 3d designer building at the intersection of design, engineering and sustainability. i enjoy taking my combination of technical and creative skills to explore 3d environments in blender!";
     webpageContent.appendChild(paragraph);
-
-    const credit = document.createElement('p');
-    credit.className = 'about-credit';
-    credit.textContent = "Inspired by Andrew Woan's website portfolio";
-    webpageContent.appendChild(credit);
 
     const headingText = 'about me';
     webpageHeading.dataset.text = headingText;
