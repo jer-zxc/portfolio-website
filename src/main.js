@@ -9,6 +9,10 @@ import { inject } from "@vercel/analytics";
 
 inject();
 
+import { injectSpeedInsights } from '@vercel/speed-insights';
+
+injectSpeedInsights();
+
 // The imported stylesheet is ready before module evaluation reaches this
 // line, so it is now safe to reveal the loading interface without a flash of
 // raw HTML.
