@@ -35,6 +35,7 @@ const webpageHeading = document.querySelector("#webpage-heading");
 const sceneLabel = document.querySelector("#scene-label");
 const sceneLabelTitle = document.querySelector("#scene-label-title");
 const sceneLabelDate = document.querySelector("#scene-label-date");
+const contactLinkedIn = document.querySelector("#contact-linkedin");
 const interactionCounterValue = document.querySelector("#interaction-counter-value");
 const navigationInstructions = document.querySelector("#navigation-instructions");
 const switchingScenesOverlay = document.querySelector("#switching-scenes");
@@ -166,6 +167,16 @@ enterGatePortfolioButton.addEventListener('click', hideEnterGate);
 // bubbled listener fires.
 enterGateMuteButton.addEventListener('pointerdown', () => setMusicEnabled(false));
 enterGateMuteButton.addEventListener('click', hideEnterGate);
+contactLinkedIn.addEventListener('pointerdown', (event) => event.stopPropagation());
+contactLinkedIn.addEventListener('click', (event) => event.stopPropagation());
+
+function showContactLinkedIn() {
+    contactLinkedIn.classList.add('visible');
+}
+
+function hideContactLinkedIn() {
+    contactLinkedIn.classList.remove('visible');
+}
 
 const textureLoader = new THREE.TextureLoader(loadingManager);
 
@@ -193,51 +204,9 @@ const loadedTextures = {
 
 };
 
-// "September 2026" is baked into the room's UV atlas rather than existing as
-// a removable mesh. Patch only its small normalized rectangle and interpolate
-// the surrounding surface colour row-by-row, preserving the rest of the atlas.
-function hideBakedSceneDate(texture) {
-    const image = texture.image;
-    const canvas = document.createElement('canvas');
-    canvas.width = image.naturalWidth || image.width;
-    canvas.height = image.naturalHeight || image.height;
-
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    context.drawImage(image, 0, 0);
-
-    const x0 = Math.floor(canvas.width * 0.746);
-    const x1 = Math.ceil(canvas.width * 0.755);
-    const y0 = Math.floor(canvas.height * 0.006);
-    const y1 = Math.ceil(canvas.height * 0.034);
-    const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
-    const { data, width } = pixels;
-
-    for (let y = y0; y < y1; y += 1) {
-        for (let x = x0; x < x1; x += 1) {
-            const t = (x - x0) / Math.max(x1 - x0 - 1, 1);
-            const index = (y * width + x) * 4;
-            const leftIndex = (y * width + Math.max(x0 - 3, 0)) * 4;
-            const rightIndex = (y * width + Math.min(x1 + 3, width - 1)) * 4;
-            for (let channel = 0; channel < 3; channel += 1) {
-                data[index + channel] = THREE.MathUtils.lerp(
-                    data[leftIndex + channel],
-                    data[rightIndex + channel],
-                    t,
-                );
-            }
-        }
-    }
-
-    context.putImageData(pixels, 0, 0);
-    texture.image = canvas;
-    texture.needsUpdate = true;
-}
-
 Object.entries(textureMap).forEach(([key, value]) => {
     if (deferredTextureKeys.has(key)) return;
-    const texture = textureLoader.load(value, (loadedTexture) => {
-        if (key === 'scene') hideBakedSceneDate(loadedTexture);
-    });
+    const texture = textureLoader.load(value);
     texture.flipY = false;
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.anisotropy = 8;
@@ -645,6 +614,8 @@ const maxPanY = 15;
 const scenes = {
     contact: {
         liftMesh: true,
+        onArrive: showContactLinkedIn,
+        onExit: hideContactLinkedIn,
         stages: [
             {
                 position: new THREE.Vector3(2.055, 1.550, -0.206),
@@ -1629,6 +1600,7 @@ function finishExitingToOverview() {
 // back in besides Escape.
 function exitZoomedScene(onComplete) {
     if (!isContactZoomedIn || isAnimatingCamera) return;
+    if (zoomedGroupKey === 'contact') hideContactLinkedIn();
     if (zoomedGroupKey === 'about' || zoomedGroupKey === 'me') {
         clearTimeout(aboutOpenTimer);
         aboutOpenTimer = null;
@@ -1908,6 +1880,8 @@ window.addEventListener('click', (event) => {
         if (stickerHit) {
             if (bonusStickerAvailable && !bonusStickerSpawned) {
                 bonusStickerSpawned = true;
+                interactionCounterValue.classList.remove('complete');
+                interactionCounterValue.classList.add('reward-claimed');
                 placeSticker(stickerHit, {
                     forcedTexture: stickerBonusTexture,
                     sizeMultiplier: stickerBonusSizeMultiplier,
@@ -3095,8 +3069,13 @@ const render = () => {
     }
 
     interactiveMeshes.forEach((mesh) => {
-        const isHovered = (hoveredMesh !== null && mesh.userData.groupKey === hoveredMesh.userData.groupKey)
-            || waveActiveGroupKeys.has(mesh.userData.groupKey);
+        const suppressContactHover = isContactZoomedIn
+            && zoomedGroupKey === 'contact'
+            && mesh.userData.groupKey === 'contact';
+        const isHovered = !suppressContactHover && (
+            (hoveredMesh !== null && mesh.userData.groupKey === hoveredMesh.userData.groupKey)
+            || waveActiveGroupKeys.has(mesh.userData.groupKey)
+        );
 
         if (!mesh.userData.isKeyboardKey) {
             // Owned by playIntroWave's scale-from-0 reveal tween until it
