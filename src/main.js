@@ -13,6 +13,9 @@ import { injectSpeedInsights } from '@vercel/speed-insights';
 
 injectSpeedInsights();
 
+
+
+
 // The imported stylesheet is ready before module evaluation reaches this
 // line, so it is now safe to reveal the loading interface without a flash of
 // raw HTML.
@@ -2765,11 +2768,12 @@ function openContactWebpage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(Object.fromEntries(new FormData(form))),
             });
-            if (!response.ok) throw new Error('Request failed');
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(result.error || 'Could not send. Please try again.');
             form.reset();
             status.textContent = 'Message sent. Thank you!';
-        } catch {
-            status.textContent = 'Could not send. Please try again.';
+        } catch (error) {
+            status.textContent = error.message || 'Could not send. Please try again.';
         } finally {
             submitButton.disabled = false;
         }

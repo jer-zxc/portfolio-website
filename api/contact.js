@@ -15,23 +15,41 @@ export default async function handler(request, response) {
         return response.status(503).json({ error: 'Email service is not configured' });
     }
 
-    const resendResponse = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-            Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            from: process.env.CONTACT_FROM_EMAIL ?? 'Portfolio <onboarding@resend.dev>',
-            to: [process.env.CONTACT_EMAIL],
-            reply_to: email,
-            subject: 'New portfolio message',
-            text: `From: ${email}\n\n${message.trim()}`,
-        }),
-    });
+    let resendResponse;
+    try {
+        resendResponse = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                from: process.env.CONTACT_FROM_EMAIL ?? 'Portfolio <onboarding@resend.dev>',
+                to: [process.env.CONTACT_EMAIL],
+                reply_to: email,
+                subject: 'New portfolio message',
+                text: `From: ${email}\n\n${message.trim()}`,
+            }),
+        });
+    } catch (error) {
+        console.error('Unable to reach Resend:', error);
+        return response.status(502).json({ error: 'Email service is temporarily unavailable' });
+    }
 
     if (!resendResponse.ok) {
-        return response.status(502).json({ error: 'Email delivery failed' });
+        const details = await resendResponse.text();
+        console.error(`Resend rejected the message (${resendResponse.status}):`, details);
+
+        if (resendResponse.status === 401) {
+            return response.status(502).json({ error: 'The email API key is invalid' });
+        }
+        if (resendResponse.status === 403 || resendResponse.status === 422) {
+            return response.status(502).json({ error: 'The sender or receiving address is not verified' });
+        }
+        if (resendResponse.status === 429) {
+            return response.status(429).json({ error: 'Too many messages—please try again shortly' });
+        }
+        return response.status(502).json({ error: 'Email delivery was rejected' });
     }
 
     return response.status(200).json({ ok: true });
