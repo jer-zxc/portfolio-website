@@ -24,7 +24,7 @@ export default async function handler(request, response) {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                from: process.env.CONTACT_FROM_EMAIL ?? 'Portfolio <onboarding@resend.dev>',
+                from: process.env.CONTACT_FROM_EMAIL ?? 'PORTFOLIO ZXC <onboarding@resend.dev>',
                 to: [process.env.CONTACT_EMAIL],
                 reply_to: email,
                 subject: 'New portfolio message',
