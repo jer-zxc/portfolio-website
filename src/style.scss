@@ -1177,7 +1177,8 @@
       transform: translate(-50%, -50%);
     }
 
-    .webpage-content.about-page {
+    .webpage-content.about-page,
+    .webpage-content.contact-page {
       --about-reveal-duration: 1s;
       --about-reveal-easing: cubic-bezier(0.4, 0, 0.2, 1);
       top: $about-outer-inset-y;
@@ -1261,7 +1262,8 @@
       }
     }
 
-    &.open .webpage-content.about-page {
+    &.open .webpage-content.about-page,
+    &.open .webpage-content.contact-page {
       opacity: 1;
     }
 
@@ -1277,7 +1279,8 @@
       margin-left: -0.35rem;
     }
 
-    .webpage-content.about-page .about-signature {
+    .webpage-content.about-page .about-signature,
+    .webpage-content.contact-page .about-signature {
       display: block;
       // Undo the base rule's left-bearing nudge - that was tuned for
       // flush-left alignment, but this page centers its text, so the nudge
@@ -1298,7 +1301,8 @@
         transform var(--about-reveal-duration) var(--about-reveal-easing);
     }
 
-    .webpage-content.about-page #webpage-heading {
+    .webpage-content.about-page #webpage-heading,
+    .webpage-content.contact-page #webpage-heading {
       width: auto;
       font-size: clamp(3rem, 5.2vw, 4.5rem);
       line-height: 0.95;
@@ -1307,6 +1311,104 @@
       margin-left: clamp(1.5rem, 2.5vw, 2.75rem);
       margin-top: 0.45rem;
       margin-bottom: 0;
+    }
+
+    .contact-form {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      gap: clamp(1rem, 2vh, 1.5rem);
+      width: min(68%, 760px);
+      margin-top: clamp(3rem, 7vh, 5rem);
+      opacity: 0;
+      transform: translateY(14px);
+      transition:
+        opacity var(--about-reveal-duration) var(--about-reveal-easing),
+        transform var(--about-reveal-duration) var(--about-reveal-easing);
+    }
+
+    .webpage-content.revealed .contact-form {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .contact-field {
+      display: grid;
+      gap: 0.55rem;
+      font-family: "Courier New", ui-monospace, monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(vars.$color-cream, 0.72);
+
+      input,
+      textarea {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid rgba(vars.$color-cream, 0.5);
+        border-radius: 0;
+        padding: 0.9rem 1rem;
+        background: rgba(9, 13, 24, 0.62);
+        color: vars.$color-cream;
+        font: 400 0.95rem/1.5 "Courier New", ui-monospace, monospace;
+        outline: none;
+        transition: border-color 0.2s ease, background 0.2s ease;
+
+        &:focus {
+          border-color: vars.$color-cream;
+          background: rgba(9, 13, 24, 0.82);
+        }
+
+        &::placeholder {
+          color: rgba(vars.$color-cream, 0.35);
+        }
+      }
+
+      textarea {
+        height: clamp(6rem, 14vh, 7.5rem);
+        min-height: 6rem;
+        max-height: 7.5rem;
+        resize: vertical;
+      }
+    }
+
+    .contact-form-footer {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+
+      button {
+        border: 1px solid rgba(vars.$color-cream, 0.7);
+        border-radius: 0;
+        padding: 0.75rem 1.2rem;
+        background: transparent;
+        color: vars.$color-cream;
+        font: 400 0.75rem "Courier New", ui-monospace, monospace;
+        letter-spacing: 0.05em;
+        cursor: pointer;
+        transition: background 0.2s ease, color 0.2s ease;
+
+        &:hover:not(:disabled) {
+          background: vars.$color-cream;
+          color: vars.$color-overlay-bg;
+        }
+
+        &:disabled {
+          cursor: wait;
+          opacity: 0.5;
+        }
+      }
+    }
+
+    .contact-form-status {
+      font: 400 0.72rem "Courier New", ui-monospace, monospace;
+      color: rgba(vars.$color-cream, 0.72);
+    }
+
+    @media (max-width: 850px) {
+      .contact-form {
+        width: 100%;
+      }
     }
   }
 
@@ -1446,30 +1548,36 @@
     }
   }
 
+  #contact-email,
   #contact-linkedin {
+    --contact-mesh-opacity: 1;
     position: fixed;
-    right: 28.5vw;
-    bottom: 39vh;
+    top: 0;
+    left: 0;
     z-index: 30;
     padding: 0.25rem;
+    border: 0;
+    background: transparent;
     font-family: "Courier New", ui-monospace, monospace;
     font-size: clamp(0.62rem, 0.75vw, 0.72rem);
     font-weight: 400;
     letter-spacing: 0.05em;
     text-transform: none;
+    text-align: right;
     text-decoration: none;
     color: rgba(vars.$color-cream, 0.78);
     text-shadow: 0 1px 5px rgba(0, 0, 0, 0.95);
+    cursor: pointer;
     opacity: 0;
     visibility: hidden;
-    transform: translateY(6px);
+    transform: translate(-100%, 0);
     pointer-events: none;
-    transition: opacity 0.3s ease, transform 0.3s ease, color 0.2s ease, visibility 0.3s ease;
+    transition: opacity 0.5s ease, color 0.2s ease, visibility 0.5s ease;
 
     &.visible {
-      opacity: 1;
+      opacity: var(--contact-mesh-opacity);
       visibility: visible;
-      transform: translateY(0);
+      transform: translate(-100%, 0);
       pointer-events: auto;
     }
 

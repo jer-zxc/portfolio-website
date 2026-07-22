@@ -42,6 +42,7 @@ const webpageHeading = document.querySelector("#webpage-heading");
 const sceneLabel = document.querySelector("#scene-label");
 const sceneLabelTitle = document.querySelector("#scene-label-title");
 const sceneLabelDate = document.querySelector("#scene-label-date");
+const contactEmail = document.querySelector("#contact-email");
 const contactLinkedIn = document.querySelector("#contact-linkedin");
 const interactionCounterValue = document.querySelector("#interaction-counter-value");
 const navigationInstructions = document.querySelector("#navigation-instructions");
@@ -176,13 +177,83 @@ enterGateMuteButton.addEventListener('pointerdown', () => setMusicEnabled(false)
 enterGateMuteButton.addEventListener('click', hideEnterGate);
 contactLinkedIn.addEventListener('pointerdown', (event) => event.stopPropagation());
 contactLinkedIn.addEventListener('click', (event) => event.stopPropagation());
+contactEmail.addEventListener('pointerdown', (event) => event.stopPropagation());
+contactEmail.addEventListener('click', (event) => {
+    event.stopPropagation();
+    openContactWebpage();
+});
 
 function showContactLinkedIn() {
+    contactEmail.classList.add('visible');
     contactLinkedIn.classList.add('visible');
 }
 
 function hideContactLinkedIn() {
+    contactEmail.classList.remove('visible');
     contactLinkedIn.classList.remove('visible');
+}
+
+// Project the permanent contact actions from the contact prop into screen
+// space so they stay attached through viewport and camera changes.
+const contactLinkBounds = new THREE.Box3();
+const contactLinkAnchor = new THREE.Vector3();
+const contactLinkSize = new THREE.Vector3();
+
+function updateContactLinkPosition() {
+    if (!contactEmail.classList.contains('visible')) return;
+
+    const contactMeshes = interactiveMeshes.filter(
+        (mesh) => mesh.userData.groupKey === 'contact',
+    );
+    if (!contactMeshes.length) return;
+
+    const isHierarchyVisible = (mesh) => {
+        let object = mesh;
+        while (object) {
+            if (!object.visible) return false;
+            object = object.parent;
+        }
+        return true;
+    };
+    const visibleContactMeshes = contactMeshes.filter(isHierarchyVisible);
+    if (!visibleContactMeshes.length) {
+        contactEmail.style.setProperty('--contact-mesh-opacity', '0');
+        contactLinkedIn.style.setProperty('--contact-mesh-opacity', '0');
+        return;
+    }
+
+    const meshOpacity = Math.max(...visibleContactMeshes.map((mesh) => {
+        const initialScale = mesh.userData.initialScale;
+        if (!initialScale) return 1;
+        const ratios = ['x', 'y', 'z'].map((axis) =>
+            initialScale[axis] ? Math.abs(mesh.scale[axis] / initialScale[axis]) : 1
+        );
+        return THREE.MathUtils.clamp(Math.min(...ratios), 0, 1);
+    }));
+    contactEmail.style.setProperty('--contact-mesh-opacity', meshOpacity.toFixed(3));
+    contactLinkedIn.style.setProperty('--contact-mesh-opacity', meshOpacity.toFixed(3));
+
+    contactLinkBounds.makeEmpty();
+    visibleContactMeshes.forEach((mesh) => contactLinkBounds.expandByObject(mesh));
+    contactLinkBounds.getCenter(contactLinkAnchor);
+    contactLinkBounds.getSize(contactLinkSize);
+
+    contactLinkAnchor.x += contactLinkSize.x * 0.475;
+    contactLinkAnchor.y -= contactLinkSize.y * 0.28;
+    contactLinkAnchor.project(camera);
+
+    const x = (contactLinkAnchor.x * 0.5 + 0.5) * sizes.width;
+    const y = (-contactLinkAnchor.y * 0.5 + 0.5) * sizes.height;
+    const isOnScreen = contactLinkAnchor.z >= -1 && contactLinkAnchor.z <= 1;
+
+    contactEmail.style.visibility = isOnScreen ? 'visible' : 'hidden';
+    contactLinkedIn.style.visibility = isOnScreen ? 'visible' : 'hidden';
+    if (!isOnScreen) return;
+
+    contactEmail.style.left = `${x}px`;
+    contactEmail.style.top = `${y + 6}px`;
+    contactLinkedIn.style.left = `${x}px`;
+    contactLinkedIn.style.top = `${y + 30}px`;
 }
 
 const textureLoader = new THREE.TextureLoader(loadingManager);
@@ -1605,9 +1676,19 @@ function finishExitingToOverview() {
 // scenes (the campground) skip that empty-click fallback entirely (an
 // outside click there is just orbiting), so the button is their only way
 // back in besides Escape.
-function exitZoomedScene(onComplete) {
+function exitZoomedScene(onComplete, contactFadeComplete = false) {
     if (!isContactZoomedIn || isAnimatingCamera) return;
-    if (zoomedGroupKey === 'contact') hideContactLinkedIn();
+    if (zoomedGroupKey === 'contact' && !contactFadeComplete) {
+        hideContactLinkedIn();
+        // Keep the camera still for most of the label fade, then let the
+        // final 150ms overlap the scene exit for a smoother handoff.
+        isAnimatingCamera = true;
+        setTimeout(() => {
+            isAnimatingCamera = false;
+            exitZoomedScene(onComplete, true);
+        }, 350);
+        return;
+    }
     if (zoomedGroupKey === 'about' || zoomedGroupKey === 'me') {
         clearTimeout(aboutOpenTimer);
         aboutOpenTimer = null;
@@ -2599,11 +2680,11 @@ function openAboutWebpage() {
     preWebpageCameraPosition.copy(camera.position);
 
     webpageOverlay.classList.add('about-mode');
-    webpageContent.classList.remove('revealed', 'full-page');
+    webpageContent.classList.remove('revealed', 'full-page', 'contact-page');
     webpageContent.classList.add('about-page');
     webpageContent.scrollTop = 0;
 
-    webpageContent.querySelectorAll('#projects-root').forEach((el) => el.remove());
+    webpageContent.querySelectorAll('#projects-root, .contact-form').forEach((el) => el.remove());
     webpageContent.querySelectorAll('p.reveal').forEach((p) => p.remove());
     webpageHeading.style.removeProperty('display');
 
@@ -2628,6 +2709,79 @@ function openAboutWebpage() {
     clearTimeout(webpageRevealTimer);
     // Begin the copy reveal with the card itself instead of waiting until
     // the card animation is almost finished.
+    webpageRevealTimer = setTimeout(() => webpageContent.classList.add('revealed'), 50);
+}
+
+function openContactWebpage() {
+    if (isWebpageOpen || isAnimatingCamera) return;
+
+    isWebpageOpen = true;
+    controls.enabled = false;
+    hideContactLinkedIn();
+
+    clearTimeout(webpageCloseCleanupTimer);
+    discardProjectDetailInterface();
+    webpageContent.classList.remove('full-page');
+    document.body.classList.remove('projects-open');
+    webpageContent.style.removeProperty('opacity');
+    webpageDiveTween?.kill();
+    preWebpageCameraPosition.copy(camera.position);
+
+    webpageOverlay.classList.add('about-mode');
+    webpageContent.classList.remove('revealed', 'full-page', 'about-page');
+    webpageContent.classList.add('contact-page');
+    webpageContent.scrollTop = 0;
+    webpageContent.querySelectorAll('#projects-root, p.reveal, .contact-form').forEach((el) => el.remove());
+    webpageHeading.style.removeProperty('display');
+
+    const form = document.createElement('form');
+    form.className = 'contact-form';
+    form.innerHTML = `
+        <label class="contact-field">
+            <span>Email</span>
+            <input type="email" name="email" autocomplete="email" required placeholder="you@example.com">
+        </label>
+        <label class="contact-field">
+            <span>Message</span>
+            <textarea name="message" required rows="7" maxlength="5000" placeholder="Write your message..."></textarea>
+        </label>
+        <div class="contact-form-footer">
+            <button type="submit">Send message</button>
+            <span class="contact-form-status" role="status" aria-live="polite"></span>
+        </div>
+    `;
+    webpageContent.appendChild(form);
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const submitButton = form.querySelector('button[type="submit"]');
+        const status = form.querySelector('.contact-form-status');
+        submitButton.disabled = true;
+        status.textContent = 'Sending...';
+
+        try {
+            const response = await fetch('/api/contact', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(Object.fromEntries(new FormData(form))),
+            });
+            if (!response.ok) throw new Error('Request failed');
+            form.reset();
+            status.textContent = 'Message sent. Thank you!';
+        } catch {
+            status.textContent = 'Could not send. Please try again.';
+        } finally {
+            submitButton.disabled = false;
+        }
+    });
+
+    const headingText = 'contact';
+    webpageHeading.dataset.text = headingText;
+    void webpageContent.offsetWidth;
+    webpageOverlay.classList.add('open');
+    document.body.classList.add('about-open');
+    playTypewriter(webpageHeading, headingText);
+    clearTimeout(webpageRevealTimer);
     webpageRevealTimer = setTimeout(() => webpageContent.classList.add('revealed'), 50);
 }
 
@@ -2694,6 +2848,7 @@ function openGalleryFromMenu() {
 function closeWebpage({ restoreGallery = true } = {}) {
     const closingProjectDetail = webpageContent.classList.contains('full-page');
     const closingAboutPage = webpageContent.classList.contains('about-page');
+    const closingContactPage = webpageContent.classList.contains('contact-page');
     const restoreGalleryAfterProjectSlide =
         closingProjectDetail && isGalleryEntered && restoreGallery;
     if (closingProjectDetail && getRouteFromLocation()?.type === 'project') {
@@ -2722,7 +2877,7 @@ function closeWebpage({ restoreGallery = true } = {}) {
     // open. About also starts exitZoomedScene when its card is dismissed, so
     // running this legacy drawer-return tween at the same time would make two
     // GSAP tweens fight over camera.position and leave it at a skewed angle.
-    if (closingProjectDetail || closingAboutPage) {
+    if (closingProjectDetail || closingAboutPage || closingContactPage) {
         webpageDiveTween = null;
     } else {
         webpageDiveTween = gsap.to(camera.position, {
@@ -2753,6 +2908,7 @@ function closeWebpage({ restoreGallery = true } = {}) {
         // avoids that; every open function clears this again on its way in.
         if (
             webpageContent.classList.contains('about-page')
+            || webpageContent.classList.contains('contact-page')
             || closingProjectDetail
         ) {
             webpageContent.style.opacity = '0';
@@ -2766,8 +2922,12 @@ function closeWebpage({ restoreGallery = true } = {}) {
             webpageContent.classList.add('preparing-project-slide');
             void webpageContent.offsetHeight;
         }
-        webpageContent.classList.remove('about-page', 'full-page', 'preparing-project-slide');
+        webpageContent.classList.remove('about-page', 'contact-page', 'full-page', 'preparing-project-slide');
         document.body.classList.remove('projects-open', 'about-open');
+
+        if (closingContactPage && isContactZoomedIn && zoomedGroupKey === 'contact') {
+            showContactLinkedIn();
+        }
 
         if (closingProjectDetail) {
             discardProjectDetailInterface();
@@ -3111,6 +3271,7 @@ const render = () => {
 
     updateGalleryTableHintPosition();
     updateLastInteractionHintPosition();
+    updateContactLinkPosition();
     hudPositionDirty = false;
     renderer.render(scene, camera);
     window.requestAnimationFrame(render);
